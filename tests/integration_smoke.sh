@@ -13,6 +13,8 @@ echo "== evaluate =="
 "$BUILD_DIR/evaluate" "$CHECKPOINT" 3
 
 echo "== play_cli (scripted game) =="
-echo "0 1 2 3 4 5 6 7 8" | "$BUILD_DIR/play_cli" "$CHECKPOINT"
+PLAY_OUTPUT="$(printf '0\n1\n2\n3\n4\n5\n6\n7\n8\n' | "$BUILD_DIR/play_cli" "$CHECKPOINT")"
+echo "$PLAY_OUTPUT"
+echo "$PLAY_OUTPUT" | grep -qE '^(Draw\.|You win!|Agent wins\.)$' || { echo "play_cli did not finish a game" >&2; exit 1; }
 
 echo "integration smoke test passed"
