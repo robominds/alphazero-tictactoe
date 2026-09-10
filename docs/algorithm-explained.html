@@ -381,11 +381,12 @@
       <li><a href="#state"><span class="n">00</span>The state</a></li>
       <li><a href="#network"><span class="n">01</span>The two-headed guess</a></li>
       <li><a href="#mcts"><span class="n">02</span>Search corrects the guess</a></li>
-      <li><a href="#selfplay"><span class="n">03</span>Self-play &amp; temperature</a></li>
-      <li><a href="#credit"><span class="n">04</span>Assigning credit</a></li>
-      <li><a href="#learning"><span class="n">05</span>Learning from itself</a></li>
-      <li><a href="#loop"><span class="n">06</span>The full loop</a></li>
-      <li><a href="#glossary"><span class="n">07</span>Concept map</a></li>
+      <li><a href="#blindspot"><span class="n">03</span>The blind spot</a></li>
+      <li><a href="#selfplay"><span class="n">04</span>Self-play &amp; temperature</a></li>
+      <li><a href="#credit"><span class="n">05</span>Assigning credit</a></li>
+      <li><a href="#learning"><span class="n">06</span>Learning from itself</a></li>
+      <li><a href="#loop"><span class="n">07</span>The full loop</a></li>
+      <li><a href="#glossary"><span class="n">08</span>Concept map</a></li>
     </ol>
   </nav>
 
@@ -630,19 +631,87 @@ float score = q + u;</code></pre>
 }</code></pre>
       <span class="src">src/mcts.cpp:50 — <code>MCTS::simulate</code></span>
 
-      <p>This is the same convention used independently in three places in this codebase — search, the exhaustive minimax opponent used for evaluation, and the value labels assigned during self-play (section 04) — and it has to agree across all three or training silently learns the wrong thing. It's exactly the kind of one-line bug that would still compile, still run, and just quietly teach the network to prefer losing.</p>
+      <p>This is the same convention used independently in three places in this codebase — search, the exhaustive minimax opponent used for evaluation, and the value labels assigned during self-play (section 05) — and it has to agree across all three or training silently learns the wrong thing. It's exactly the kind of one-line bug that would still compile, still run, and just quietly teach the network to prefer losing.</p>
 
       <p>Once simulation stops, the fraction of total visits each legal move received becomes both the move actually played <em>and</em> — separately — a training target for the policy head. That second use is the deep idea behind AlphaZero: <strong>search is a policy-improvement operator</strong>. Feed it a mediocre policy (the raw network), get back a better one (the visit distribution), for free, just by spending more compute at decision time. Training then tries to make the cheap network alone predict what the expensive search found — so over many iterations, the network gets good enough that search needs to correct it less.</p>
     </section>
 
+    <section id="blindspot">
+      <div class="sec-head"><span class="sec-num">03</span><h2>The blind spot</h2></div>
+      <span class="concept">concept — exploration is bounded by what you're willing to try</span>
+
+      <p>The section above ends on an optimistic note — search corrects the network's guesses. It doesn't always, and the failure mode is worth walking through in detail, because it happened for real in this exact codebase and it's one of the cleaner illustrations of why the exploration/exploitation trade-off is not a solved problem, just a managed one.</p>
+
+      <p>A network trained for 1000 iterations (training loss down to ~0.22 — very confident) was evaluated against minimax and came back <code>wins=0 draws=20 losses=20</code>, every single time it was re-run. Losing <em>some</em> games isn't surprising early in training. Losing <strong>exactly</strong> the same 20 games, deterministically, forever, is a different kind of signal — evaluation has no randomness in it (minimax always resolves ties the same way, and greedy search at temperature 0 never touches the RNG), so this wasn't variance. It was one specific game, played the same losing way every time.</p>
+
+      <figure class="wide">
+        <div class="fig-frame">
+          <div style="display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start;">
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-bottom:8px;">the critical position — O to move</div>
+              <div class="board-grid">
+                <div class="x">X</div><div></div><div class="o">O</div>
+                <div class="x">X</div><div></div><div></div>
+                <div></div><div></div><div></div>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-top:8px;">X threatens cell 6 (column 0,3,6)</div>
+            </div>
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-bottom:8px;">100 simulations' worth of visits, by cell</div>
+              <table style="width:auto; font-size:12.5px;">
+                <tr><th>cell</th><td class="mono">1</td><td class="mono">4</td><td class="mono">5</td><td class="mono" style="color:var(--o); font-weight:700;">6</td><td class="mono">7</td><td class="mono">8</td></tr>
+                <tr><th>share of visits</th><td class="mono">0.08</td><td class="mono">0.11</td><td class="mono">0.11</td><td class="mono" style="color:var(--o); font-weight:700;">0.01</td><td class="mono">0.28</td><td class="mono">0.40</td></tr>
+              </table>
+              <div style="font-size:12.5px; color:var(--ink-dim); margin-top:10px; max-width:34ch;">Cell 6 — the only move that actually blocks the threat — got 1 visit out of 100. The network played 8 instead. X forked two moves later and won.</div>
+            </div>
+          </div>
+        </div>
+        <figcaption>Real output from <code>tools/diag_eval.cpp</code> (playing the trained checkpoint against minimax as O) — see section 08 for the tool itself. This is the exact position and the exact visit distribution that produced the deterministic loss.</figcaption>
+      </figure>
+
+      <p>The mechanism is visible directly in the PUCT formula from section 02:</p>
+
+      <div class="formula">score(a) = Q(s,a) <span class="op">+</span> c<sub>puct</sub> · <span style="text-decoration:underline; text-decoration-color:var(--o); text-decoration-thickness:2px;">P(a|s)</span> · √(Σ<sub>b</sub> N(s,b)) <span class="op">/</span> (1 + N(s,a))</div>
+
+      <p>The exploration bonus is <em>proportional to the network's own prior</em>. If training has pushed <code>P(6|s)</code> down toward zero for this pattern, the bonus for trying cell 6 shrinks toward zero right along with it — and it keeps shrinking relative to the other moves' accumulating evidence, however many simulations run. The exact mechanism meant to let search overrule a bad prior is itself gated by that prior. A confident-enough network can search its way into a corner it can never search its way back out of.</p>
+
+      <div class="callout">
+        <span class="cal-label">why self-play never caught it on its own</span>
+        <p>Self-play generates its own training data by playing itself, so if the network is <em>equally</em> unlikely to try cell 6 whether it's attacking or defending, the specific tactical pattern that punishes ignoring it may simply never come up often enough, deeply enough, for training to push the prior back up. The blind spot is self-reinforcing: bad prior → little exploration → no corrective data → prior stays bad.</p>
+      </div>
+
+      <p>The fix is the standard one, and it's the reason real AlphaZero never ships without it: mix a floor of randomness into the root's priors before search begins, so no legal move's exploration budget can ever fully collapse to zero.</p>
+
+      <pre><code>void MCTS::mixDirichletNoise(std::array&lt;float, 9&gt;&amp; priors, const std::vector&lt;int&gt;&amp; legalMoves,
+                              std::mt19937&amp; rng, float alpha, float epsilon) {
+    std::gamma_distribution&lt;float&gt; gamma(alpha, 1.0f);
+    std::array&lt;float, 9&gt; noise{};
+    float sum = 0.0f;
+    for (int m : legalMoves) {
+        noise[m] = std::max(gamma(rng), 1e-6f);
+        sum += noise[m];
+    }
+    for (int m : legalMoves) {
+        float noiseFrac = noise[m] / sum;
+        priors[m] = (1.0f - epsilon) * priors[m] + epsilon * noiseFrac;   // epsilon = 0.25
+    }
+}</code></pre>
+      <span class="src">src/mcts.cpp:11 — <code>MCTS::mixDirichletNoise</code></span>
+
+      <p>A Dirichlet-distributed sample over the legal moves (drawn here via independent Gamma(<code>alpha</code>, 1) draws, normalized) gets blended 25% into the network's own priors, <em>only at the root, only during self-play</em>. Blending only at the root keeps the noise's effect local to "which move does this training game explore next" without corrupting the deeper value estimates search relies on. Restricting it to self-play (not evaluation or interactive play) matters too: during a real game you want the network's honest best judgment, unperturbed — the noise's job is to make sure that judgment gets built on training data that actually explored the position, not to second-guess it at the moment of playing.</p>
+
+      <p>The result, retrained from scratch: <code>draws=40 losses=0</code>, every game, both sides — after <strong>20</strong> iterations, not 1000. The fix didn't patch around one bad checkpoint; it changed what the network was ever given the chance to learn in the first place.</p>
+    </section>
+
     <section id="selfplay">
-      <div class="sec-head"><span class="sec-num">03</span><h2>Self-play &amp; temperature</h2></div>
+      <div class="sec-head"><span class="sec-num">04</span><h2>Self-play &amp; temperature</h2></div>
       <span class="concept">concept — trajectory generation, exploration via sampling</span>
 
       <p>Supervised learning needs labeled examples. AlphaZero's trick is that it never needs a human to provide them — it generates its own by playing itself, using exactly the network-plus-search combination from sections 01–02 for <em>both</em> sides of the board:</p>
 
       <pre><code>while (!board.isTerminal()) {
-    MCTS mcts(network, config.numSimulations, config.cPuct);
+    MCTS mcts(network, config.numSimulations, config.cPuct,
+              /*addRootNoise=*/true, config.dirichletAlpha, config.dirichletEpsilon);
     float temperature = (ply &lt; config.temperatureMoves) ? 1.0f : 0.0f;
     MCTSResult result = mcts.run(board, temperature);
     pending.push_back({board.encode(), result.visitDistribution, board.playerToMove()});
@@ -650,6 +719,8 @@ float score = q + u;</code></pre>
     ++ply;
 }</code></pre>
       <span class="src">src/selfplay.cpp:17 — <code>playSelfPlayGame</code></span>
+
+      <p><code>addRootNoise=true</code> is what wires in the Dirichlet-noise fix from section 03 — self-play is exactly where the training data that eventually fixes a bad prior gets generated, so it's exactly where forced exploration needs to happen.</p>
 
       <p>The <code>temperature</code> parameter controls a second exploration/exploitation trade-off, this time over which move actually gets <em>played</em> in the generated game (not which move search merely considers):</p>
 
@@ -665,7 +736,7 @@ float score = q + u;</code></pre>
     </section>
 
     <section id="credit">
-      <div class="sec-head"><span class="sec-num">04</span><h2>Assigning credit</h2></div>
+      <div class="sec-head"><span class="sec-num">05</span><h2>Assigning credit</h2></div>
       <span class="concept">concept — Monte Carlo return, credit assignment</span>
 
       <p>A self-play game produces a sequence of positions, but a single scalar outcome — someone won, someone lost, or it was a draw — only arrives at the very end. <strong>Credit assignment</strong> is the general RL problem of turning that one end-of-episode signal into a training label for every state that led up to it. Tic-tac-toe's answer is about as direct as credit assignment ever gets:</p>
@@ -699,7 +770,7 @@ for (const auto&amp; p : pending) {
     </section>
 
     <section id="learning">
-      <div class="sec-head"><span class="sec-num">05</span><h2>Learning from itself</h2></div>
+      <div class="sec-head"><span class="sec-num">06</span><h2>Learning from itself</h2></div>
       <span class="concept">concept — supervised learning on self-generated labels</span>
 
       <p>Once a replay buffer of <code>(board, MCTS policy, z)</code> triples exists, training is no longer really "reinforcement learning" in the moment-to-moment sense — it's ordinary supervised learning, minimizing a loss against labels the system manufactured for itself two sections ago:</p>
@@ -723,7 +794,7 @@ for (int h = 0; h &lt; 64; ++h) {
     </section>
 
     <section id="loop">
-      <div class="sec-head"><span class="sec-num">06</span><h2>The full loop</h2></div>
+      <div class="sec-head"><span class="sec-num">07</span><h2>The full loop</h2></div>
       <span class="concept">concept — the training loop, evaluation without self-play bias</span>
 
       <figure class="wide">
@@ -773,13 +844,15 @@ eval vs minimax: wins=0 draws=40 losses=0
 iteration 60: buffer=10000 loss=1.5721
 eval vs minimax: wins=0 draws=40 losses=0
    ⋮                                        (draws=40 losses=0 holds through iteration 120)</code></pre>
-      <span class="src">from a real <code>./train 120</code> run — see <code>docs/superpowers/specs/</code></span>
+      <span class="src">from a real <code>./train 120</code> run, before the fix in section 03</span>
+
+      <p>That run predates the Dirichlet-noise fix from section 03 — it converges, but it's also exactly the kind of run that can quietly hide a blind spot behind a still-improving loss curve. A retrain with root noise enabled reached the same <code>draws=40 losses=0</code> — every game, both sides — after <strong>20</strong> iterations, not 120, and didn't get stuck the way the original 1000-iteration run in section 03 did. Faster convergence wasn't really the goal of the fix; it's the side effect of the network actually being made to look at the positions it was previously allowed to ignore.</p>
 
       <p>Loss falling and losses (the game-outcome kind) hitting zero are two different claims, and it's worth noticing which one actually matters: a network can have low loss while still losing occasionally, if it's confidently predicting outcomes it's actually still misjudging tactically. The number that ultimately validates this whole pipeline is <code>losses=0</code> holding — not the loss curve.</p>
     </section>
 
     <section id="glossary">
-      <div class="sec-head"><span class="sec-num">07</span><h2>Concept map</h2></div>
+      <div class="sec-head"><span class="sec-num">08</span><h2>Concept map</h2></div>
       <span class="concept">concept — where each idea lives in the code</span>
 
       <p>A quick index back into the repository, for whichever fundamental you want to see again in situ.</p>
@@ -800,6 +873,9 @@ eval vs minimax: wins=0 draws=40 losses=0
         <dt>Exploration vs. exploitation (search-time)</dt>
         <dd>The PUCT formula in <code>MCTS::selectChild</code> <span class="loc">— src/mcts.cpp:28</span></dd>
 
+        <dt>Guaranteed exploration / Dirichlet root noise</dt>
+        <dd><code>MCTS::mixDirichletNoise</code>, enabled for self-play only <span class="loc">— src/mcts.cpp:11, src/selfplay.cpp:20</span></dd>
+
         <dt>Exploration vs. exploitation (trajectory-time)</dt>
         <dd><code>SelfPlayConfig::temperatureMoves</code>, sampling in <code>MCTS::run</code> <span class="loc">— src/selfplay.cpp, src/mcts.cpp:112</span></dd>
 
@@ -814,6 +890,9 @@ eval vs minimax: wins=0 draws=40 losses=0
 
         <dt>Bias-free evaluation</dt>
         <dd><code>evaluateAgainstMinimax</code> against an exhaustive solver, never the network's own history <span class="loc">— src/eval.cpp, src/minimax.cpp</span></dd>
+
+        <dt>Per-side diagnostic (used to find the blind spot in section 03)</dt>
+        <dd>Plays and prints one full game as X and one as O, with visit distributions at every move <span class="loc">— tools/diag_eval.cpp</span></dd>
       </dl>
     </section>
 

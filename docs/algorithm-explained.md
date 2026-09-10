@@ -15,11 +15,12 @@ highlighting — is available as a published page; see the project README.)*
 - [00 — The state](#00--the-state)
 - [01 — The two-headed guess](#01--the-two-headed-guess)
 - [02 — Search corrects the guess](#02--search-corrects-the-guess)
-- [03 — Self-play & temperature](#03--self-play--temperature)
-- [04 — Assigning credit](#04--assigning-credit)
-- [05 — Learning from itself](#05--learning-from-itself)
-- [06 — The full loop](#06--the-full-loop)
-- [07 — Concept map](#07--concept-map)
+- [03 — The blind spot](#03--the-blind-spot)
+- [04 — Self-play & temperature](#04--self-play--temperature)
+- [05 — Assigning credit](#05--assigning-credit)
+- [06 — Learning from itself](#06--learning-from-itself)
+- [07 — The full loop](#07--the-full-loop)
+- [08 — Concept map](#08--concept-map)
 
 ---
 
@@ -264,7 +265,7 @@ float MCTS::simulate(Node& node) {
 
 This is the same convention used independently in three places in this
 codebase — search, the exhaustive minimax opponent used for evaluation,
-and the value labels assigned during self-play (section 04) — and it has
+and the value labels assigned during self-play (section 05) — and it has
 to agree across all three or training silently learns the wrong thing.
 It's exactly the kind of one-line bug that would still compile, still
 run, and just quietly teach the network to prefer losing.
@@ -281,7 +282,106 @@ enough that search needs to correct it less.
 
 ---
 
-## 03 — Self-play & temperature
+## 03 — The blind spot
+
+**Concept: exploration is bounded by what you're willing to try**
+
+The section above ends on an optimistic note — search corrects the
+network's guesses. It doesn't always, and the failure mode is worth
+walking through in detail, because it happened for real in this exact
+codebase and it's one of the cleaner illustrations of why the
+exploration/exploitation trade-off is not a solved problem, just a
+managed one.
+
+A network trained for 1000 iterations (training loss down to ~0.22 — very
+confident) was evaluated against minimax and came back
+`wins=0 draws=20 losses=20`, every single time it was re-run. Losing
+*some* games isn't surprising early in training. Losing **exactly** the
+same 20 games, deterministically, forever, is a different kind of
+signal — evaluation has no randomness in it (minimax always resolves ties
+the same way, and greedy search at temperature 0 never touches the RNG),
+so this wasn't variance. It was one specific game, played the same losing
+way every time.
+
+**The critical position** — O to move, board `X . O / X . . / . . .`
+(X threatens cell 6, completing column 0/3/6):
+
+| cell | 1 | 4 | 5 | **6** | 7 | 8 |
+|---|---|---|---|---|---|---|
+| share of visits (out of 100 simulations) | 0.08 | 0.11 | 0.11 | **0.01** | 0.28 | 0.40 |
+
+Cell 6 — the only move that actually blocks the threat — got **1 visit
+out of 100**. The network played 8 instead. X forked two moves later and
+won. (Real output from `tools/diag_eval.cpp`, playing the trained
+checkpoint against minimax as O — see section 08 for the tool itself.
+This is the exact position and the exact visit distribution that produced
+the deterministic loss.)
+
+The mechanism is visible directly in the PUCT formula from section 02:
+
+```
+score(a) = Q(s,a) + c_puct · P(a|s) · sqrt(Σ_b N(s,b)) / (1 + N(s,a))
+                     ^^^^^^
+```
+
+The exploration bonus is *proportional to the network's own prior*. If
+training has pushed `P(6|s)` down toward zero for this pattern, the bonus
+for trying cell 6 shrinks toward zero right along with it — and it keeps
+shrinking relative to the other moves' accumulating evidence, however
+many simulations run. The exact mechanism meant to let search overrule a
+bad prior is itself gated by that prior. A confident-enough network can
+search its way into a corner it can never search its way back out of.
+
+> **Why self-play never caught it on its own.** Self-play generates its
+> own training data by playing itself, so if the network is *equally*
+> unlikely to try cell 6 whether it's attacking or defending, the
+> specific tactical pattern that punishes ignoring it may simply never
+> come up often enough, deeply enough, for training to push the prior
+> back up. The blind spot is self-reinforcing: bad prior → little
+> exploration → no corrective data → prior stays bad.
+
+The fix is the standard one, and it's the reason real AlphaZero never
+ships without it: mix a floor of randomness into the root's priors before
+search begins, so no legal move's exploration budget can ever fully
+collapse to zero.
+
+```cpp
+void MCTS::mixDirichletNoise(std::array<float, 9>& priors, const std::vector<int>& legalMoves,
+                              std::mt19937& rng, float alpha, float epsilon) {
+    std::gamma_distribution<float> gamma(alpha, 1.0f);
+    std::array<float, 9> noise{};
+    float sum = 0.0f;
+    for (int m : legalMoves) {
+        noise[m] = std::max(gamma(rng), 1e-6f);
+        sum += noise[m];
+    }
+    for (int m : legalMoves) {
+        float noiseFrac = noise[m] / sum;
+        priors[m] = (1.0f - epsilon) * priors[m] + epsilon * noiseFrac;   // epsilon = 0.25
+    }
+}
+```
+*src/mcts.cpp:11 — `MCTS::mixDirichletNoise`*
+
+A Dirichlet-distributed sample over the legal moves (drawn here via
+independent Gamma(`alpha`, 1) draws, normalized) gets blended 25% into
+the network's own priors, *only at the root, only during self-play*.
+Blending only at the root keeps the noise's effect local to "which move
+does this training game explore next" without corrupting the deeper
+value estimates search relies on. Restricting it to self-play (not
+evaluation or interactive play) matters too: during a real game you want
+the network's honest best judgment, unperturbed — the noise's job is to
+make sure that judgment gets built on training data that actually
+explored the position, not to second-guess it at the moment of playing.
+
+The result, retrained from scratch: `draws=40 losses=0`, every game, both
+sides — after **20** iterations, not 1000. The fix didn't patch around
+one bad checkpoint; it changed what the network was ever given the
+chance to learn in the first place.
+
+---
+
+## 04 — Self-play & temperature
 
 **Concept: trajectory generation, exploration via sampling**
 
@@ -292,7 +392,8 @@ itself, using exactly the network-plus-search combination from sections
 
 ```cpp
 while (!board.isTerminal()) {
-    MCTS mcts(network, config.numSimulations, config.cPuct);
+    MCTS mcts(network, config.numSimulations, config.cPuct,
+              /*addRootNoise=*/true, config.dirichletAlpha, config.dirichletEpsilon);
     float temperature = (ply < config.temperatureMoves) ? 1.0f : 0.0f;
     MCTSResult result = mcts.run(board, temperature);
     pending.push_back({board.encode(), result.visitDistribution, board.playerToMove()});
@@ -301,6 +402,11 @@ while (!board.isTerminal()) {
 }
 ```
 *src/selfplay.cpp:17 — `playSelfPlayGame`*
+
+`addRootNoise=true` is what wires in the Dirichlet-noise fix from section
+03 — self-play is exactly where the training data that eventually fixes a
+bad prior gets generated, so it's exactly where forced exploration needs
+to happen.
 
 The `temperature` parameter controls a second exploration/exploitation
 trade-off, this time over which move actually gets *played* in the
@@ -330,7 +436,7 @@ generated game (not which move search merely considers):
 
 ---
 
-## 04 — Assigning credit
+## 05 — Assigning credit
 
 **Concept: Monte Carlo return, credit assignment**
 
@@ -381,7 +487,7 @@ without the network ever having to *be* the search.
 
 ---
 
-## 05 — Learning from itself
+## 06 — Learning from itself
 
 **Concept: supervised learning on self-generated labels**
 
@@ -426,7 +532,7 @@ doesn't need more than that at this scale.
 
 ---
 
-## 06 — The full loop
+## 07 — The full loop
 
 **Concept: the training loop, evaluation without self-play bias**
 
@@ -473,7 +579,16 @@ iteration 60: buffer=10000 loss=1.5721
 eval vs minimax: wins=0 draws=40 losses=0
    ⋮                                    (draws=40 losses=0 holds through iteration 120)
 ```
-*from a real `./train 120` run*
+*from a real `./train 120` run, before the fix in section 03*
+
+That run predates the Dirichlet-noise fix from section 03 — it converges,
+but it's also exactly the kind of run that can quietly hide a blind spot
+behind a still-improving loss curve. A retrain with root noise enabled
+reached the same `draws=40 losses=0` — every game, both sides — after
+**20** iterations, not 120, and didn't get stuck the way the original
+1000-iteration run in section 03 did. Faster convergence wasn't really
+the goal of the fix; it's the side effect of the network actually being
+made to look at the positions it was previously allowed to ignore.
 
 Loss falling and losses (the game-outcome kind) hitting zero are two
 different claims, and it's worth noticing which one actually matters: a
@@ -484,7 +599,7 @@ tactically. The number that ultimately validates this whole pipeline is
 
 ---
 
-## 07 — Concept map
+## 08 — Concept map
 
 A quick index back into the repository, for whichever fundamental you
 want to see again in situ.
@@ -496,11 +611,13 @@ want to see again in situ.
 | Policy π(a\|s) and value V(s) function approximation | `Network::predict`, the two-headed MLP — `src/network.cpp:23` |
 | Planning / lookahead | `MCTS::simulate`, `MCTS::run` — `src/mcts.cpp:50, 87` |
 | Exploration vs. exploitation (search-time) | The PUCT formula in `MCTS::selectChild` — `src/mcts.cpp:28` |
+| Guaranteed exploration / Dirichlet root noise | `MCTS::mixDirichletNoise`, enabled for self-play only — `src/mcts.cpp:11`, `src/selfplay.cpp:20` |
 | Exploration vs. exploitation (trajectory-time) | `SelfPlayConfig::temperatureMoves`, sampling in `MCTS::run` — `src/selfplay.cpp`, `src/mcts.cpp:112` |
 | Policy improvement operator | The MCTS visit distribution used as a training target for the policy head — `src/selfplay.cpp:24` |
 | Monte Carlo return / credit assignment | The `z` label backfilled once a self-play game ends — `src/selfplay.cpp:28` |
 | Combined loss / gradient descent | `Network::trainStep`, hand-derived backprop — `src/network.cpp:60` |
 | Bias-free evaluation | `evaluateAgainstMinimax` against an exhaustive solver, never the network's own history — `src/eval.cpp`, `src/minimax.cpp` |
+| Per-side diagnostic (used to find the blind spot in section 03) | Plays and prints one full game as X and one as O, with visit distributions at every move — `tools/diag_eval.cpp` |
 
 ---
 
