@@ -49,6 +49,15 @@ add_executable(test_eval tests/test_eval.cpp)
 target_link_libraries(test_eval az)
 add_test(NAME test_eval COMMAND test_eval)
 
+# Test binaries must assert regardless of CMAKE_BUILD_TYPE. The default
+# build type is Release, which defines NDEBUG and would otherwise compile
+# every assert() in these targets down to a no-op, making the test suite
+# vacuous. Strip NDEBUG here without affecting the az library or app
+# targets, which should keep Release optimization.
+foreach(t test_board test_minimax test_network test_mcts test_replay_buffer test_selfplay test_eval)
+  target_compile_options(${t} PRIVATE -UNDEBUG)
+endforeach()
+
 add_executable(evaluate apps/evaluate.cpp)
 target_link_libraries(evaluate az)
 
