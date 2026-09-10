@@ -9,6 +9,13 @@ See [`docs/superpowers/specs/2026-09-09-alphazero-tictactoe-design.md`](docs/sup
 for the design rationale and [`docs/superpowers/plans/2026-09-09-alphazero-tictactoe.md`](docs/superpowers/plans/2026-09-09-alphazero-tictactoe.md)
 for the implementation plan.
 
+For a guided walkthrough of the algorithm itself — board encoding, the
+network, MCTS/PUCT, self-play, and training, with real code and RL
+fundamentals explained along the way — see
+[`docs/algorithm-explained.md`](docs/algorithm-explained.md) (plain
+markdown) or open [`docs/algorithm-explained.html`](docs/algorithm-explained.html)
+in a browser for the illustrated version with diagrams.
+
 ## Build
 
 Requires CMake 3.16+ and a C++17 compiler. No external dependencies.

@@ -1,0 +1,825 @@
+<title>AlphaZero from Scratch</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#F3F4F7;
+    --surface:#FFFFFF;
+    --surface-2:#ECEEF2;
+    --ink:#1A1D23;
+    --ink-dim:#565E6B;
+    --ink-faint:#8189947a;
+    --rule:#DADDE4;
+    --rule-strong:#C3C8D1;
+    --x:#2C5FA8;
+    --x-soft:#E4ECF7;
+    --o:#BD5A26;
+    --o-soft:#F7E9DE;
+    --code-bg:#EDEFF3;
+    --shadow: 0 1px 2px rgba(20,23,30,.06), 0 6px 20px -12px rgba(20,23,30,.12);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14161B;
+      --surface:#1B1E25;
+      --surface-2:#20232B;
+      --ink:#E7E9EE;
+      --ink-dim:#9AA1AE;
+      --ink-faint:#5b6270a3;
+      --rule:#2B2F38;
+      --rule-strong:#3A3F4A;
+      --x:#7EA9E6;
+      --x-soft:#1E2B3F;
+      --o:#E2985E;
+      --o-soft:#3A2A1E;
+      --code-bg:#1F2229;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 10px 24px -14px rgba(0,0,0,.55);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14161B;
+    --surface:#1B1E25;
+    --surface-2:#20232B;
+    --ink:#E7E9EE;
+    --ink-dim:#9AA1AE;
+    --ink-faint:#5b6270a3;
+    --rule:#2B2F38;
+    --rule-strong:#3A3F4A;
+    --x:#7EA9E6;
+    --x-soft:#1E2B3F;
+    --o:#E2985E;
+    --o-soft:#3A2A1E;
+    --code-bg:#1F2229;
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 10px 24px -14px rgba(0,0,0,.55);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height:1.65;
+    font-size:16.5px;
+  }
+  h1,h2,h3{
+    font-family:"IBM Plex Serif", ui-serif, Georgia, serif;
+    font-weight:600;
+    text-wrap:balance;
+    color:var(--ink);
+    letter-spacing:-.01em;
+  }
+  code, .mono, .kv dd, .board, .tag-code{
+    font-family:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric:tabular-nums;
+  }
+  a{ color:var(--x); }
+  a:hover{ text-decoration-thickness:2px; }
+  :focus-visible{ outline:2px solid var(--x); outline-offset:2px; }
+
+  .shell{
+    max-width:1180px;
+    margin:0 auto;
+    padding:56px 24px 120px;
+    display:grid;
+    grid-template-columns:220px minmax(0,760px);
+    gap:56px;
+    justify-content:center;
+  }
+  @media (max-width:960px){
+    .shell{ grid-template-columns:minmax(0,1fr); }
+    nav.toc{ display:none; }
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead{
+    grid-column:1/-1;
+    max-width:760px;
+    margin:0 auto 8px;
+  }
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:12px;
+    letter-spacing:.09em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    margin-bottom:18px;
+  }
+  .eyebrow .chip-x, .eyebrow .chip-o{
+    width:9px;height:9px;border-radius:2px;
+  }
+  .eyebrow .chip-x{ background:var(--x); }
+  .eyebrow .chip-o{ background:var(--o); border-radius:50%; }
+
+  h1.title{
+    font-size:clamp(30px, 4vw, 42px);
+    line-height:1.12;
+    margin:0 0 14px;
+  }
+  .dek{
+    font-size:18px;
+    color:var(--ink-dim);
+    max-width:62ch;
+    margin:0 0 28px;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 18px;
+    font-size:13px;
+    color:var(--ink-dim);
+    border-top:1px solid var(--rule);
+    border-bottom:1px solid var(--rule);
+    padding:12px 0;
+    margin-bottom:8px;
+  }
+  .meta-row b{ color:var(--ink); font-weight:600; }
+
+  /* ---------- toc ---------- */
+  nav.toc{
+    position:sticky;
+    top:56px;
+    align-self:start;
+    font-size:13.5px;
+  }
+  nav.toc .toc-label{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    margin-bottom:10px;
+  }
+  nav.toc ol{
+    list-style:none;
+    margin:0; padding:0;
+    display:flex; flex-direction:column; gap:2px;
+    border-left:1px solid var(--rule);
+  }
+  nav.toc a{
+    display:block;
+    padding:6px 0 6px 14px;
+    color:var(--ink-dim);
+    text-decoration:none;
+    border-left:2px solid transparent;
+    margin-left:-1px;
+  }
+  nav.toc a:hover{ color:var(--ink); border-left-color:var(--rule-strong); }
+  nav.toc .n{ color:var(--ink-faint); margin-right:8px; }
+
+  /* ---------- article ---------- */
+  main{ min-width:0; }
+  section{ margin:0 0 64px; }
+  section:last-of-type{ margin-bottom:0; }
+
+  .sec-head{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:6px;
+  }
+  .sec-num{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:14px;
+    color:var(--ink-faint);
+  }
+  h2{
+    font-size:25px;
+    margin:0;
+  }
+  .concept{
+    display:inline-block;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;
+    letter-spacing:.07em;
+    text-transform:uppercase;
+    color:var(--x);
+    background:var(--x-soft);
+    padding:3px 8px;
+    border-radius:3px;
+    margin:10px 0 20px;
+  }
+
+  p{ margin:0 0 16px; max-width:66ch; }
+  ul, ol.list{ margin:0 0 16px; padding-left:22px; max-width:64ch; }
+  li{ margin-bottom:6px; }
+  strong{ font-weight:600; }
+  .x-word{ color:var(--x); font-weight:600; }
+  .o-word{ color:var(--o); font-weight:600; }
+
+  figure{ margin:28px 0; }
+  figure.wide{ margin-left:0; margin-right:0; }
+  .fig-frame{
+    background:var(--surface);
+    border:1px solid var(--rule);
+    border-radius:8px;
+    padding:20px 22px;
+    box-shadow:var(--shadow);
+    overflow-x:auto;
+  }
+  figcaption{
+    margin-top:10px;
+    font-size:13px;
+    color:var(--ink-dim);
+    max-width:66ch;
+  }
+  svg text{ fill:currentColor; }
+  svg .dim{ fill:var(--ink-dim); }
+  svg .faint{ fill:var(--ink-faint); }
+  svg .rule{ stroke:var(--rule-strong); }
+  svg .x-fill{ fill:var(--x); }
+  svg .x-stroke{ stroke:var(--x); }
+  svg .o-fill{ fill:var(--o); }
+  svg .o-stroke{ stroke:var(--o); }
+
+  pre{
+    background:var(--code-bg);
+    border:1px solid var(--rule);
+    border-radius:8px;
+    padding:16px 18px;
+    overflow-x:auto;
+    font-size:13.2px;
+    line-height:1.55;
+    margin:18px 0;
+  }
+  pre code{ background:none; padding:0; }
+  p code, li code{
+    background:var(--code-bg);
+    padding:1.5px 5px;
+    border-radius:4px;
+    font-size:.9em;
+  }
+  .src{
+    display:block;
+    text-align:right;
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    margin-top:-10px;
+    margin-bottom:18px;
+  }
+  .src a{ color:var(--ink-faint); }
+
+  .callout{
+    border-left:3px solid var(--x);
+    background:var(--x-soft);
+    padding:14px 18px;
+    border-radius:0 6px 6px 0;
+    margin:20px 0;
+    font-size:15px;
+  }
+  .callout p:last-child{ margin-bottom:0; }
+  .callout .cal-label{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--x);
+    margin-bottom:6px;
+    display:block;
+  }
+
+  .formula{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:15px;
+    background:var(--surface-2);
+    border:1px solid var(--rule);
+    border-radius:6px;
+    padding:16px 20px;
+    margin:18px 0;
+    overflow-x:auto;
+  }
+  .formula .op{ color:var(--ink-dim); }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13.8px;
+    margin:18px 0;
+  }
+  caption{ text-align:left; font-size:13px; color:var(--ink-dim); margin-bottom:8px; }
+  th,td{
+    text-align:left;
+    padding:9px 12px;
+    border-bottom:1px solid var(--rule);
+    vertical-align:top;
+  }
+  th{
+    font-family:"IBM Plex Mono", monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    font-weight:500;
+  }
+  td.mono{ font-size:12.8px; white-space:nowrap; }
+  .wrap-table{ overflow-x:auto; }
+
+  .board-grid{
+    display:inline-grid;
+    grid-template-columns:repeat(3, 30px);
+    grid-template-rows:repeat(3, 30px);
+    gap:3px;
+    background:var(--rule-strong);
+    padding:3px;
+    border-radius:4px;
+    vertical-align:middle;
+  }
+  .board-grid div{
+    background:var(--surface);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:"IBM Plex Mono", monospace;
+    font-weight:600;
+    font-size:15px;
+  }
+  .board-grid .x{ color:var(--x); }
+  .board-grid .o{ color:var(--o); }
+
+  .glossary dt{
+    font-family:"IBM Plex Mono", monospace;
+    font-weight:500;
+    color:var(--ink);
+    margin-top:14px;
+  }
+  .glossary dd{
+    margin:4px 0 0;
+    color:var(--ink-dim);
+    max-width:62ch;
+  }
+  .glossary dd .loc{ color:var(--ink-faint); font-size:12px; }
+
+  footer{
+    max-width:760px;
+    grid-column:2;
+    margin-top:8px;
+    padding-top:24px;
+    border-top:1px solid var(--rule);
+    font-size:13px;
+    color:var(--ink-faint);
+  }
+  @media (max-width:960px){ footer{ grid-column:1; } }
+</style>
+
+<div class="shell">
+  <div class="masthead">
+    <div class="eyebrow"><span class="chip-x"></span><span class="chip-o"></span> rlexp / alphazero-tictactoe — code walkthrough</div>
+    <h1 class="title">AlphaZero from Scratch</h1>
+    <p class="dek">How a 9-square board, a 64-unit neural net, and a tree search taught themselves to never lose — walked through against the actual C++ in this repository, section by section, in the order the code actually runs.</p>
+    <div class="meta-row">
+      <span><b>Language</b> C++17, zero dependencies</span>
+      <span><b>Network</b> 18 → 64 → {9, 1}</span>
+      <span><b>Result</b> draws=40 / losses=0 vs. perfect play, sustained</span>
+    </div>
+  </div>
+
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <ol>
+      <li><a href="#state"><span class="n">00</span>The state</a></li>
+      <li><a href="#network"><span class="n">01</span>The two-headed guess</a></li>
+      <li><a href="#mcts"><span class="n">02</span>Search corrects the guess</a></li>
+      <li><a href="#selfplay"><span class="n">03</span>Self-play &amp; temperature</a></li>
+      <li><a href="#credit"><span class="n">04</span>Assigning credit</a></li>
+      <li><a href="#learning"><span class="n">05</span>Learning from itself</a></li>
+      <li><a href="#loop"><span class="n">06</span>The full loop</a></li>
+      <li><a href="#glossary"><span class="n">07</span>Concept map</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <section id="state">
+      <div class="sec-head"><span class="sec-num">00</span><h2>The state</h2></div>
+      <span class="concept">concept — Markov decision process</span>
+
+      <p>Every reinforcement learning problem starts with the same three ingredients: a <strong>state</strong> the agent observes, a set of <strong>actions</strong> it can take, and a <strong>reward</strong> it eventually receives. Tic-tac-toe is a two-player, zero-sum, perfect-information Markov decision process small enough to see whole — there are exactly 5,478 legal board positions — which is precisely why it's a good place to learn the machinery before pointing it at something you can't fully enumerate.</p>
+
+      <p>In this codebase the state is <code>az::Board</code>: nine cells, each <code>Empty</code>/<code>X</code>/<code>O</code>, plus whose turn it is. The interesting design decision isn't the grid — it's how that grid gets turned into numbers a neural network can read.</p>
+
+      <pre><code>// 18 floats: [my stones (9), opponent stones (9)], from the
+// perspective of playerToMove().
+std::array&lt;float, 18&gt; Board::encode() const {
+    std::array&lt;float, 18&gt; out{};
+    Cell mine = toMove_;
+    Cell theirs = (toMove_ == Cell::X) ? Cell::O : Cell::X;
+    for (int i = 0; i &lt; 9; ++i) {
+        out[i]     = (cells_[i] == mine)   ? 1.0f : 0.0f;
+        out[9 + i] = (cells_[i] == theirs) ? 1.0f : 0.0f;
+    }
+    return out;
+}</code></pre>
+      <span class="src">src/board.cpp:62 — <code>Board::encode</code></span>
+
+      <p>Notice what's <em>not</em> in that encoding: the literal symbols X and O. The network only ever sees "my stones" and "the opponent's stones," never which physical mark they correspond to. This is a small instance of a general RL technique — <strong>state canonicalization</strong> — collapsing states that are strategically identical into one representation. Here it halves what the network has to learn: a position is exactly as good for "me" whether I'm playing X or O, so there's no reason to make the network discover that symmetry from data when the encoding can hand it over for free.</p>
+
+      <figure>
+        <div class="fig-frame">
+          <div style="display:flex; gap:36px; flex-wrap:wrap; align-items:flex-start;">
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-bottom:8px;">position on the board</div>
+              <div class="board-grid">
+                <div class="x">X</div><div></div><div></div>
+                <div></div><div class="o">O</div><div></div>
+                <div></div><div></div><div></div>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-top:8px;">O to move</div>
+            </div>
+            <div style="align-self:center; color:var(--ink-faint); font-size:20px;">→</div>
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); margin-bottom:8px;"><code>encode()</code> — from O's perspective</div>
+              <table style="width:auto; font-size:12.5px;">
+                <tr><th>index</th><td class="mono">0</td><td class="mono">1</td><td class="mono">2</td><td class="mono">3</td><td class="mono">4</td><td class="mono">5</td><td class="mono">6</td><td class="mono">7</td><td class="mono">8</td></tr>
+                <tr><th>my stones (0–8)</th><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono" style="color:var(--o); font-weight:600;">1</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td></tr>
+                <tr><th>opp. stones (9–17)</th><td class="mono" style="color:var(--x); font-weight:600;">1</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+        <figcaption>The same physical square (index 0, occupied by <span class="x-word">X</span>) lands in a different half of the 18-float vector depending on who's asking. If it were <span class="x-word">X</span>'s move instead, this exact board would encode with the 1s swapped — X's stone would appear in "my stones," O's in "opponent's."</figcaption>
+      </figure>
+
+      <div class="callout">
+        <span class="cal-label">why this matters beyond tic-tac-toe</span>
+        <p>Real AlphaZero does the same trick for chess and Go — the network always sees the board "from the side to move," and even flips the board orientation so it never has to separately learn White's and Black's strategy. Canonical state representations are one of the cheapest wins in applied RL: anything the encoding can guarantee, the network doesn't have to spend capacity discovering.</p>
+      </div>
+    </section>
+
+    <section id="network">
+      <div class="sec-head"><span class="sec-num">01</span><h2>The two-headed guess</h2></div>
+      <span class="concept">concept — policy π(a|s) and value V(s)</span>
+
+      <p>Given a state, two questions matter: <strong>which move looks good</strong> (the <em>policy</em>), and <strong>how good is this position overall</strong> (the <em>value</em>). AlphaZero's central idea is to approximate both with one small function — here, a hand-written multilayer perceptron with no automatic-differentiation library behind it, because the whole point of this project was to write the forward and backward passes by hand.</p>
+
+      <figure class="wide">
+        <div class="fig-frame">
+          <svg viewBox="0 0 760 260" role="img" aria-label="Network architecture: an 18-float input splits into a 9-float policy softmax and a 1-float tanh value, through one 64-unit ReLU hidden layer." style="width:100%; height:auto; max-width:640px; display:block; margin:0 auto;">
+            <defs>
+              <marker id="arrM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <!-- input -->
+            <rect x="20" y="60" width="140" height="46" rx="5" fill="none" class="rule" stroke-width="1.2"/>
+            <text x="90" y="80" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">input · 18</text>
+            <text x="90" y="96" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">my + opp. stones</text>
+
+            <rect x="20" y="150" width="140" height="30" rx="5" fill="none" class="rule" stroke-width="1"/>
+            <text x="90" y="169" text-anchor="middle" font-size="11" class="dim" font-family="IBM Plex Mono, monospace">board.encode()</text>
+
+            <!-- hidden -->
+            <rect x="300" y="45" width="150" height="170" rx="6" fill="none" class="x-stroke" stroke-width="1.4"/>
+            <text x="375" y="70" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace" class="x-fill">hidden · 64</text>
+            <text x="375" y="87" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">fully connected, ReLU</text>
+            <g class="x-fill">
+              <circle cx="330" cy="110" r="3.2"/><circle cx="352" cy="110" r="3.2"/><circle cx="374" cy="110" r="3.2"/><circle cx="396" cy="110" r="3.2"/><circle cx="418" cy="110" r="3.2"/>
+              <circle cx="330" cy="130" r="3.2"/><circle cx="352" cy="130" r="3.2"/><circle cx="374" cy="130" r="3.2"/><circle cx="396" cy="130" r="3.2"/><circle cx="418" cy="130" r="3.2"/>
+              <circle cx="330" cy="150" r="3.2"/><circle cx="352" cy="150" r="3.2"/><circle cx="374" cy="150" r="3.2"/><circle cx="396" cy="150" r="3.2"/><circle cx="418" cy="150" r="3.2"/>
+            </g>
+            <text x="375" y="185" text-anchor="middle" font-size="17" class="dim">⋯</text>
+            <text x="375" y="202" text-anchor="middle" font-size="10" class="faint" font-family="IBM Plex Mono, monospace">64 units total</text>
+
+            <!-- arrow input -> hidden -->
+            <line x1="160" y1="83" x2="298" y2="105" class="rule" stroke-width="1.2" marker-end="url(#arrM)"/>
+
+            <!-- policy head -->
+            <rect x="590" y="20" width="150" height="58" rx="5" fill="none" class="rule" stroke-width="1.2"/>
+            <text x="665" y="42" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">policy · 9</text>
+            <text x="665" y="58" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">softmax → π(a|s)</text>
+            <text x="665" y="72" text-anchor="middle" font-size="10" class="faint" font-family="IBM Plex Mono, monospace">"which move looks good"</text>
+
+            <!-- value head -->
+            <rect x="590" y="182" width="150" height="58" rx="5" fill="none" class="rule" stroke-width="1.2"/>
+            <text x="665" y="204" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">value · 1</text>
+            <text x="665" y="220" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">tanh → V(s) ∈ [-1,1]</text>
+            <text x="665" y="234" text-anchor="middle" font-size="10" class="faint" font-family="IBM Plex Mono, monospace">"how good is this?"</text>
+
+            <line x1="452" y1="100" x2="588" y2="55" class="rule" stroke-width="1.2" marker-end="url(#arrM)"/>
+            <line x1="452" y1="150" x2="588" y2="205" class="rule" stroke-width="1.2" marker-end="url(#arrM)"/>
+          </svg>
+        </div>
+        <figcaption>One shared trunk, two heads. Both heads read the same 64-unit hidden layer — the network learns one internal representation of "what's going on in this position" and spends it two ways.</figcaption>
+      </figure>
+
+      <p>The forward pass is exactly what the diagram shows, in code:</p>
+
+      <pre><code>Prediction Network::predict(const std::array&lt;float, 18&gt;&amp; encodedBoard) const {
+    // input(18) → hidden(64, ReLU)
+    std::array&lt;float, 64&gt; a1{};
+    for (int h = 0; h &lt; 64; ++h) {
+        float z = b1_[h];
+        for (int i = 0; i &lt; 18; ++i) z += w1_[h][i] * encodedBoard[i];
+        a1[h] = z &gt; 0.0f ? z : 0.0f;              // ReLU
+    }
+    // hidden(64) → policy logits(9) → softmax
+    std::array&lt;float, 9&gt; logits{};
+    for (int k = 0; k &lt; 9; ++k) {
+        float z = bPolicy_[k];
+        for (int h = 0; h &lt; 64; ++h) z += wPolicy_[k][h] * a1[h];
+        logits[k] = z;
+    }
+    /* ... softmax(logits) → policy ... */
+
+    // hidden(64) → value preactivation(1) → tanh
+    float valuePre = bValue_;
+    for (int h = 0; h &lt; 64; ++h) valuePre += wValue_[h] * a1[h];
+    float value = std::tanh(valuePre);
+
+    return Prediction{policy, value};
+}</code></pre>
+      <span class="src">src/network.cpp:23 — <code>Network::predict</code> (softmax elided)</span>
+
+      <p>Two details worth noticing, both standard RL/deep-learning choices rather than accidents:</p>
+      <ul>
+        <li><strong>The value head ends in <code>tanh</code>, not a raw number.</strong> Game outcomes here are win / draw / loss — <code>+1</code>, <code>0</code>, <code>-1</code> — so squashing the output into that exact range means the network's guess and the label it's trained against always live in the same units.</li>
+        <li><strong>The policy head is a full softmax over all 9 cells</strong>, even the ones that are already occupied. <code>predict()</code> has no idea which moves are legal — it's a pure function of the encoded board. Something downstream has to mask out illegal moves before trusting the distribution. That "something" is section 02.</li>
+      </ul>
+
+      <div class="callout">
+        <span class="cal-label">why a two-headed net at all</span>
+        <p>Classic RL splits these into separate algorithms — a policy-gradient method learns π, a value-based method like Q-learning learns V or Q. AlphaZero's insight is that both quantities are useful for the <em>same</em> search (the policy tells search where to look first, the value tells it when to stop looking and just estimate), so training one shared network to predict both, with one shared representation, is both cheaper and — empirically — better than training two networks separately.</p>
+      </div>
+    </section>
+
+    <section id="mcts">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Search corrects the guess</h2></div>
+      <span class="concept">concept — planning, exploration vs. exploitation, bootstrapping</span>
+
+      <p>A freshly initialized network's guesses are close to random. If the agent just played whatever move the policy head liked best, it would play badly forever — there's no learning signal telling the network it's wrong until <em>something</em> more reliable checks its guesses against the actual rules of the game. That something is <strong>Monte Carlo Tree Search</strong> (MCTS), specifically the PUCT variant AlphaZero uses.</p>
+
+      <p>The idea: from the current position, run many short simulated lookaheads. Each one picks a move, walks one ply deeper, and either hits a position the network has already scored (use that estimate) or hits the actual end of the game (use the real outcome — no estimate needed, because at a terminal position the truth is known exactly). Every simulation's result gets backed up the tree, refining a running estimate of "how good is each of my *legal* moves, really" — an estimate strictly better than the network's raw, unchecked guess.</p>
+
+      <p>Which move to explore next during search is the classic <strong>exploration/exploitation</strong> trade-off, resolved here by the PUCT formula:</p>
+
+      <div class="formula">score(a) = Q(s,a) <span class="op">+</span> c<sub>puct</sub> · P(a|s) · √(Σ<sub>b</sub> N(s,b)) <span class="op">/</span> (1 + N(s,a))</div>
+
+      <pre><code>float q = node.visitCounts[m] &gt; 0 ? node.totalValue[m] / node.visitCounts[m] : 0.0f;
+float u = cPuct_ * node.priors[m] * std::sqrt(totalVisits + 1e-8f) / (1 + node.visitCounts[m]);
+float score = q + u;</code></pre>
+      <span class="src">src/mcts.cpp:33 — <code>MCTS::selectChild</code></span>
+
+      <p>Read left to right: <code>Q(s,a)</code> is <strong>exploitation</strong> — the mean value this move has actually backed up so far, i.e. "how well has this move performed in simulations we've already run." The second term is <strong>exploration</strong> — it starts large (when <code>N(s,a)</code>, the visit count, is 0) and shrinks every time the move gets visited again, while staying larger for moves the network's prior <code>P(a|s)</code> already likes. In plain terms: <em>try what the network suggests first, but don't ignore a move forever just because you haven't tried it yet.</em> <code>c<sub>puct</sub> = 1.5</code> in this codebase controls how strongly that exploration term counts against the accumulated evidence in <code>Q</code>.</p>
+
+      <figure class="wide">
+        <div class="fig-frame">
+          <svg viewBox="0 0 780 400" role="img" aria-label="Search tree for a position where X can win immediately by playing square 2. The winning child is terminal and backs up a value of +1 to the root; a non-terminal alternative backs up only the network's uncertain estimate." style="width:100%; height:auto; max-width:700px; display:block; margin:0 auto;">
+            <defs>
+              <marker id="arrT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <!-- root -->
+            <rect x="290" y="14" width="200" height="92" rx="6" fill="none" class="rule" stroke-width="1.3"/>
+            <text x="390" y="34" text-anchor="middle" font-size="11" class="dim" font-family="IBM Plex Mono, monospace">root — X to move</text>
+            <text x="390" y="58" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13">X X · / O O · / · · ·</text>
+            <text x="390" y="78" text-anchor="middle" font-size="11" class="faint" font-family="IBM Plex Mono, monospace">legal: 2, 5, 6, 7, 8</text>
+            <text x="390" y="96" text-anchor="middle" font-size="11.5" class="x-fill" font-weight="600" font-family="IBM Plex Mono, monospace">Q(root, move 2) → 1.00</text>
+
+            <!-- left child: move 2, terminal win -->
+            <line x1="330" y1="106" x2="150" y2="200" class="x-stroke" stroke-width="1.6" marker-end="url(#arrT)"/>
+            <text x="205" y="145" font-size="11" class="x-fill" font-family="IBM Plex Mono, monospace">move 2</text>
+
+            <rect x="40" y="200" width="220" height="110" rx="6" fill="var(--x-soft)" class="x-stroke" stroke-width="1.6"/>
+            <text x="150" y="222" text-anchor="middle" font-size="11" class="dim" font-family="IBM Plex Mono, monospace">terminal — X wins</text>
+            <text x="150" y="246" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13">X X X / O O · / · · ·</text>
+            <text x="150" y="268" text-anchor="middle" font-size="11" class="faint" font-family="IBM Plex Mono, monospace">O to move — O has lost</text>
+            <text x="150" y="288" text-anchor="middle" font-size="12.5" class="x-fill" font-weight="600" font-family="IBM Plex Mono, monospace">leaf value = −1</text>
+
+            <text x="150" y="334" text-anchor="middle" font-size="11" font-family="IBM Plex Mono, monospace">back up: <tspan class="x-fill" font-weight="600">−(−1) = +1</tspan></text>
+            <text x="150" y="352" text-anchor="middle" font-size="10.5" class="dim">one simulation is enough —</text>
+            <text x="150" y="367" text-anchor="middle" font-size="10.5" class="dim">the outcome is exact, not estimated</text>
+
+            <!-- right child: move 5, non-terminal -->
+            <line x1="450" y1="106" x2="620" y2="200" class="rule" stroke-width="1.6" marker-end="url(#arrT)"/>
+            <text x="565" y="145" font-size="11" class="dim" font-family="IBM Plex Mono, monospace">move 5 (one alternative)</text>
+
+            <rect x="510" y="200" width="220" height="110" rx="6" fill="var(--surface-2)" class="rule" stroke-width="1.3"/>
+            <text x="620" y="222" text-anchor="middle" font-size="11" class="dim" font-family="IBM Plex Mono, monospace">not terminal — expand</text>
+            <text x="620" y="246" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13">X X · / O O X / · · ·</text>
+            <text x="620" y="268" text-anchor="middle" font-size="11" class="faint" font-family="IBM Plex Mono, monospace">O to move — game continues</text>
+            <text x="620" y="288" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">leaf value ≈ v(network)</text>
+
+            <text x="620" y="334" text-anchor="middle" font-size="10.5" class="dim">an untrained guess, not a fact —</text>
+            <text x="620" y="352" text-anchor="middle" font-size="10.5" class="dim">and it will keep changing as</text>
+            <text x="620" y="367" text-anchor="middle" font-size="10.5" class="dim">this subtree gets revisited</text>
+          </svg>
+        </div>
+        <figcaption>The exact position from <code>tests/test_mcts.cpp</code>: X has two in a row and playing square 2 wins outright. Because that child is terminal, its true value is known immediately — no network guess needed — and after only a handful of simulations its backed-up <code>Q</code> at the root dwarfs every other move. Search found the tactic; the untrained network's priors never could have.</figcaption>
+      </figure>
+
+      <p>The sign flip in "back up: −(−1) = +1" is the single most important piece of bookkeeping in the whole search, and it's worth being explicit about why it's there. Every value in this codebase is stored <strong>from the perspective of whoever is about to move</strong> at that node — exactly like the board encoding in section 00. But the player to move alternates every ply. So a value that means "great for me" one level down means "terrible for me" one level up, and the code negates it exactly once per ply on the way back to the root:</p>
+
+      <pre><code>float MCTS::simulate(Node&amp; node) {
+    if (node.board.isTerminal()) {
+        // the player to move at a terminal node never just won —
+        // the win happened on the *previous* ply
+        return node.board.outcome() == Outcome::Draw ? 0.0f : -1.0f;
+    }
+    if (!node.expanded) return expand(node);       // leaf: trust the network
+
+    int move = selectChild(node);
+    /* ... descend into node.children[move] ... */
+    float childValue = simulate(*node.children[move]);
+    float value = -childValue;                     // ← the flip
+    node.visitCounts[move] += 1;
+    node.totalValue[move]  += value;
+    return value;
+}</code></pre>
+      <span class="src">src/mcts.cpp:50 — <code>MCTS::simulate</code></span>
+
+      <p>This is the same convention used independently in three places in this codebase — search, the exhaustive minimax opponent used for evaluation, and the value labels assigned during self-play (section 04) — and it has to agree across all three or training silently learns the wrong thing. It's exactly the kind of one-line bug that would still compile, still run, and just quietly teach the network to prefer losing.</p>
+
+      <p>Once simulation stops, the fraction of total visits each legal move received becomes both the move actually played <em>and</em> — separately — a training target for the policy head. That second use is the deep idea behind AlphaZero: <strong>search is a policy-improvement operator</strong>. Feed it a mediocre policy (the raw network), get back a better one (the visit distribution), for free, just by spending more compute at decision time. Training then tries to make the cheap network alone predict what the expensive search found — so over many iterations, the network gets good enough that search needs to correct it less.</p>
+    </section>
+
+    <section id="selfplay">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Self-play &amp; temperature</h2></div>
+      <span class="concept">concept — trajectory generation, exploration via sampling</span>
+
+      <p>Supervised learning needs labeled examples. AlphaZero's trick is that it never needs a human to provide them — it generates its own by playing itself, using exactly the network-plus-search combination from sections 01–02 for <em>both</em> sides of the board:</p>
+
+      <pre><code>while (!board.isTerminal()) {
+    MCTS mcts(network, config.numSimulations, config.cPuct);
+    float temperature = (ply &lt; config.temperatureMoves) ? 1.0f : 0.0f;
+    MCTSResult result = mcts.run(board, temperature);
+    pending.push_back({board.encode(), result.visitDistribution, board.playerToMove()});
+    board = board.applyMove(result.selectedMove);
+    ++ply;
+}</code></pre>
+      <span class="src">src/selfplay.cpp:17 — <code>playSelfPlayGame</code></span>
+
+      <p>The <code>temperature</code> parameter controls a second exploration/exploitation trade-off, this time over which move actually gets <em>played</em> in the generated game (not which move search merely considers):</p>
+
+      <ul>
+        <li><strong>temperature = 1.0</strong> (the first <code>temperatureMoves = 2</code> plies): sample a move with probability proportional to its raw visit count. A move visited twice as often is twice as likely to be picked — but every legal move with at least one visit has <em>some</em> chance. This is what makes self-play generate varied openings instead of replaying the identical game forever.</li>
+        <li><strong>temperature = 0</strong> (every ply after that): always play the single most-visited move, deterministically. Once the game is a few moves in, there's no more benefit to exploring — search has already done its job, so play its best answer.</li>
+      </ul>
+
+      <div class="callout">
+        <span class="cal-label">the RL fundamental hiding in one config struct</span>
+        <p><code>SelfPlayConfig::temperatureMoves</code> is a two-line answer to a question every RL algorithm has to answer somehow: <em>how do you keep generating diverse experience without wrecking the quality of the data you learn from?</em> Too little exploration and the agent only ever practices one line of play, never discovering better ones. Too much and most of its games are close to random, diluting the training signal with noise. Annealing temperature from "explore" to "exploit" partway through each trajectory is a small, concrete instance of that trade-off, tuned for a game that's usually over in five to nine moves.</p>
+      </div>
+    </section>
+
+    <section id="credit">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Assigning credit</h2></div>
+      <span class="concept">concept — Monte Carlo return, credit assignment</span>
+
+      <p>A self-play game produces a sequence of positions, but a single scalar outcome — someone won, someone lost, or it was a draw — only arrives at the very end. <strong>Credit assignment</strong> is the general RL problem of turning that one end-of-episode signal into a training label for every state that led up to it. Tic-tac-toe's answer is about as direct as credit assignment ever gets:</p>
+
+      <pre><code>Outcome outcome = board.outcome();               // known only once the game ends
+for (const auto&amp; p : pending) {
+    float z;
+    if (outcome == Outcome::Draw) {
+        z = 0.0f;
+    } else {
+        bool playerWon = (outcome == Outcome::XWins &amp;&amp; p.playerToMove == Cell::X) ||
+                          (outcome == Outcome::OWins &amp;&amp; p.playerToMove == Cell::O);
+        z = playerWon ? 1.0f : -1.0f;
+    }
+    buffer.add(TrainingExample{p.encoded, p.policy, z});
+}</code></pre>
+      <span class="src">src/selfplay.cpp:28 — <code>playSelfPlayGame</code></span>
+
+      <p>Every position recorded earlier in the game is revisited after it's over and stamped with <code>z</code> — the real, final result, seen from <em>that position's own player-to-move at the time</em> (not the last player to move in the finished game; see the sign-flip discussion in section 02, the same perspective convention applies here). This is a <strong>Monte Carlo return</strong>: an unbiased sample of a state's true value, computed by actually playing to the end rather than estimating. It's high-variance from any single game — a position that was objectively fine might get labeled <code>−1</code> just because of what happened many moves later — but averaged over the thousands of games a training run produces, it converges to the truth.</p>
+
+      <table>
+        <caption>Two value signals feed the same training example, from two different places in the pipeline</caption>
+        <thead><tr><th>Target</th><th>Where it comes from</th><th>What kind of estimate</th></tr></thead>
+        <tbody>
+          <tr><td><code>targetPolicy</code></td><td>MCTS visit distribution (section 02)</td><td>Bootstrapped — built from other estimates, refined in real time during search</td></tr>
+          <tr><td><code>targetValue</code> (<code>z</code>)</td><td>The finished game's actual outcome (this section)</td><td>Monte Carlo — the ground truth for this one rollout, no estimation involved</td></tr>
+        </tbody>
+      </table>
+
+      <p>Mixing a bootstrapped policy target with a Monte-Carlo value target in the same training example is itself a well-known RL design choice — it's what AlphaZero (and its predecessor, TD-learning methods like TD-Gammon) do to get faster-converging value estimates than pure Monte Carlo alone, without the network ever having to <em>be</em> the search.</p>
+    </section>
+
+    <section id="learning">
+      <div class="sec-head"><span class="sec-num">05</span><h2>Learning from itself</h2></div>
+      <span class="concept">concept — supervised learning on self-generated labels</span>
+
+      <p>Once a replay buffer of <code>(board, MCTS policy, z)</code> triples exists, training is no longer really "reinforcement learning" in the moment-to-moment sense — it's ordinary supervised learning, minimizing a loss against labels the system manufactured for itself two sections ago:</p>
+
+      <div class="formula">L <span class="op">=</span> (v <span class="op">−</span> z)² <span class="op">+</span> −Σ<sub>a</sub> π<sub>MCTS</sub>(a) · log p<sub>network</sub>(a)</div>
+
+      <p>The first term is ordinary mean-squared error, pulling the value head's guess <code>v</code> toward the Monte Carlo outcome <code>z</code>. The second is cross-entropy, pulling the policy head's distribution toward the (better-informed) search-derived distribution. Because the network's forward pass in this project is hand-written, so is its backward pass — every gradient below is the chain rule, spelled out, with no autograd library computing it for you:</p>
+
+      <pre><code>float dValuePre = 2.0f * (value - example.targetValue) * (1.0f - value * value);   // d/dv (v-z)², through tanh'
+for (int k = 0; k &lt; 9; ++k) dLogits[k] = policy[k] - example.targetPolicy[k];      // softmax+cross-entropy gradient
+
+// both heads feed back into the one shared hidden layer:
+for (int h = 0; h &lt; 64; ++h) {
+    float grad = dValuePre * wValue_[h];
+    for (int k = 0; k &lt; 9; ++k) grad += dLogits[k] * wPolicy_[k][h];
+    dA1[h] = grad;
+}</code></pre>
+      <span class="src">src/network.cpp:99 — <code>Network::trainStep</code> (weight-gradient accumulation elided)</span>
+
+      <p>That accumulation step is where the "two heads, one trunk" architecture from section 01 earns its keep: the hidden layer's gradient is the <em>sum</em> of what both heads want it to change, so a single backward pass improves the shared representation for both jobs at once. Gradients are averaged over a batch of <code>batchSize = 32</code> examples and applied with plain stochastic gradient descent at <code>learningRate = 0.01</code> — no momentum, no Adam, nothing beyond the update rule <code>w −= learningRate · gradient</code>. It doesn't need more than that at this scale.</p>
+    </section>
+
+    <section id="loop">
+      <div class="sec-head"><span class="sec-num">06</span><h2>The full loop</h2></div>
+      <span class="concept">concept — the training loop, evaluation without self-play bias</span>
+
+      <figure class="wide">
+        <div class="fig-frame">
+          <svg viewBox="0 0 900 260" role="img" aria-label="Training loop: self-play generates games into a replay buffer, training samples batches from the buffer to update the network, the updated network plays the next round of self-play, and periodically the network is evaluated against a perfect minimax opponent instead of itself." style="width:100%; height:auto; max-width:820px; display:block; margin:0 auto;">
+            <defs>
+              <marker id="arrL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <rect x="20" y="70" width="170" height="70" rx="6" fill="none" class="x-stroke" stroke-width="1.4"/>
+            <text x="105" y="98" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">self-play</text>
+            <text x="105" y="115" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">25 games / iteration</text>
+
+            <rect x="255" y="70" width="170" height="70" rx="6" fill="none" class="rule" stroke-width="1.3"/>
+            <text x="340" y="98" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">replay buffer</text>
+            <text x="340" y="115" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">capacity 10,000</text>
+
+            <rect x="490" y="70" width="170" height="70" rx="6" fill="none" class="x-stroke" stroke-width="1.4"/>
+            <text x="575" y="98" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">train</text>
+            <text x="575" y="115" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">20 batches of 32</text>
+
+            <line x1="190" y1="105" x2="253" y2="105" class="rule" stroke-width="1.4" marker-end="url(#arrL)"/>
+            <line x1="425" y1="105" x2="488" y2="105" class="rule" stroke-width="1.4" marker-end="url(#arrL)"/>
+            <path d="M575 70 C 575 20, 105 20, 105 68" fill="none" class="x-stroke" stroke-width="1.4" marker-end="url(#arrL)"/>
+            <text x="340" y="24" text-anchor="middle" font-size="10.5" class="x-fill" font-family="IBM Plex Mono, monospace">updated network plays the next round</text>
+
+            <line x1="575" y1="140" x2="575" y2="182" class="rule" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#arrL)"/>
+            <text x="608" y="165" font-size="10" class="dim" font-family="IBM Plex Mono, monospace">every 10 iterations</text>
+
+            <rect x="490" y="184" width="170" height="60" rx="6" fill="var(--o-soft)" class="o-stroke" stroke-width="1.4"/>
+            <text x="575" y="210" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace" class="o-fill">evaluate</text>
+            <text x="575" y="226" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">vs. perfect minimax</text>
+          </svg>
+        </div>
+        <figcaption>Everything on the blue path trains the network against itself. The orange branch never does — <code>evaluateAgainstMinimax</code> is the one place the network is measured against an opponent it can't have influenced by being weak, so "it's winning more" can't just mean "it's gotten better at losing to a worse version of itself."</figcaption>
+      </figure>
+
+      <p>Why check against an exhaustive minimax solver instead of, say, the network's own previous checkpoint (the "arena" step real AlphaZero uses)? Because tic-tac-toe is small enough to solve outright — there's a computable, unambiguous notion of "playing perfectly" to measure against, which most real games don't have. It also gives an evaluation invariant that's satisfying to say out loud: a perfect player never loses, so <strong>the network's win count against it is always exactly zero</strong>, by construction, and the only number that can move is how often it manages to draw instead of losing.</p>
+
+      <p>Run for real, this converges:</p>
+
+      <pre><code>iteration 40: buffer=8452 loss=1.8831
+eval vs minimax: wins=0 draws=38 losses=2
+iteration 50: buffer=9847 loss=1.6104
+eval vs minimax: wins=0 draws=40 losses=0
+iteration 60: buffer=10000 loss=1.5721
+eval vs minimax: wins=0 draws=40 losses=0
+   ⋮                                        (draws=40 losses=0 holds through iteration 120)</code></pre>
+      <span class="src">from a real <code>./train 120</code> run — see <code>docs/superpowers/specs/</code></span>
+
+      <p>Loss falling and losses (the game-outcome kind) hitting zero are two different claims, and it's worth noticing which one actually matters: a network can have low loss while still losing occasionally, if it's confidently predicting outcomes it's actually still misjudging tactically. The number that ultimately validates this whole pipeline is <code>losses=0</code> holding — not the loss curve.</p>
+    </section>
+
+    <section id="glossary">
+      <div class="sec-head"><span class="sec-num">07</span><h2>Concept map</h2></div>
+      <span class="concept">concept — where each idea lives in the code</span>
+
+      <p>A quick index back into the repository, for whichever fundamental you want to see again in situ.</p>
+
+      <dl class="glossary">
+        <dt>Markov decision process (state / action / reward)</dt>
+        <dd><code>az::Board</code>, <code>az::Cell</code>, <code>az::Outcome</code> <span class="loc">— include/az/board.hpp</span></dd>
+
+        <dt>State canonicalization</dt>
+        <dd>Player-relative <code>encode()</code> <span class="loc">— src/board.cpp:62</span></dd>
+
+        <dt>Policy π(a|s) and value V(s) function approximation</dt>
+        <dd><code>Network::predict</code>, the two-headed MLP <span class="loc">— src/network.cpp:23</span></dd>
+
+        <dt>Planning / lookahead</dt>
+        <dd><code>MCTS::simulate</code>, <code>MCTS::run</code> <span class="loc">— src/mcts.cpp:50, 87</span></dd>
+
+        <dt>Exploration vs. exploitation (search-time)</dt>
+        <dd>The PUCT formula in <code>MCTS::selectChild</code> <span class="loc">— src/mcts.cpp:28</span></dd>
+
+        <dt>Exploration vs. exploitation (trajectory-time)</dt>
+        <dd><code>SelfPlayConfig::temperatureMoves</code>, sampling in <code>MCTS::run</code> <span class="loc">— src/selfplay.cpp, src/mcts.cpp:112</span></dd>
+
+        <dt>Policy improvement operator</dt>
+        <dd>The MCTS visit distribution used as a training target for the policy head <span class="loc">— src/selfplay.cpp:24</span></dd>
+
+        <dt>Monte Carlo return / credit assignment</dt>
+        <dd>The <code>z</code> label backfilled once a self-play game ends <span class="loc">— src/selfplay.cpp:28</span></dd>
+
+        <dt>Combined loss / gradient descent</dt>
+        <dd><code>Network::trainStep</code>, hand-derived backprop <span class="loc">— src/network.cpp:60</span></dd>
+
+        <dt>Bias-free evaluation</dt>
+        <dd><code>evaluateAgainstMinimax</code> against an exhaustive solver, never the network's own history <span class="loc">— src/eval.cpp, src/minimax.cpp</span></dd>
+      </dl>
+    </section>
+
+  </main>
+
+  <footer>
+    Written against commit-level source in <code>rlexp/alphazero-tictactoe</code> — build and run it yourself with <code>mkdir build &amp;&amp; cd build &amp;&amp; cmake .. &amp;&amp; cmake --build . &amp;&amp; ./train 300 checkpoint.bin</code>. Design and prose assembled with Claude Code.
+  </footer>
+</div>
