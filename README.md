@@ -79,4 +79,4 @@ without either.
 
 ## Authorship
 
-Designed and implemented with [Claude Code](https://claude.com/claude-code).
+Mark Castelluccio, designed and implemented with [Claude Code](https://claude.com/claude-code).
