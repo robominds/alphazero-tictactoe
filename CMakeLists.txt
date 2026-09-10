@@ -14,6 +14,7 @@ add_library(az
     src/network.cpp
     src/mcts.cpp
     src/replay_buffer.cpp
+    src/selfplay.cpp
 )
 target_include_directories(az PUBLIC include)
 
@@ -38,3 +39,7 @@ add_test(NAME test_mcts COMMAND test_mcts)
 add_executable(test_replay_buffer tests/test_replay_buffer.cpp)
 target_link_libraries(test_replay_buffer az)
 add_test(NAME test_replay_buffer COMMAND test_replay_buffer)
+
+add_executable(test_selfplay tests/test_selfplay.cpp)
+target_link_libraries(test_selfplay az)
+add_test(NAME test_selfplay COMMAND test_selfplay)
