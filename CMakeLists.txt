@@ -10,6 +10,7 @@ endif()
 
 add_library(az
     src/board.cpp
+    src/minimax.cpp
 )
 target_include_directories(az PUBLIC include)
 
@@ -18,3 +19,7 @@ enable_testing()
 add_executable(test_board tests/test_board.cpp)
 target_link_libraries(test_board az)
 add_test(NAME test_board COMMAND test_board)
+
+add_executable(test_minimax tests/test_minimax.cpp)
+target_link_libraries(test_minimax az)
+add_test(NAME test_minimax COMMAND test_minimax)
