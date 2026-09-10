@@ -55,10 +55,22 @@ Typical session:
 
 ### What "trained" looks like
 
-Training converges to optimal (drawing) play against minimax. A 120-iteration
-run reached `draws=40 losses=0` against the perfect-play oracle and held it
-across 10 consecutive evaluations, with training loss trending down from
-~2.8 to ~1.5 over the run.
+Training converges to optimal (drawing) play against minimax — with root
+Dirichlet noise during self-play (see below), a real run reached
+`draws=40 losses=0` (all 40 games, both sides) after just **20 iterations**.
+
+### Debugging a checkpoint
+
+`MCTS::run` guides self-play exploration with Dirichlet noise mixed into
+the root's priors (`SelfPlayConfig::dirichletAlpha`/`dirichletEpsilon`, on
+by default), so search can't permanently starve a move the network is
+(possibly wrongly) confident is bad. Without it, a network can get stuck
+with a genuine blind spot: confidently losing every game from one side
+because search never visits the one move that mattered enough to correct
+it. `tools/diag_eval.cpp` (built as `./diag_eval <checkpoint>`) plays one
+game as X and one as O against minimax, printing every move and MCTS
+visit distribution — useful for tracing exactly where and why a
+checkpoint loses.
 
 ## Project layout
 
@@ -67,6 +79,7 @@ include/az/   public headers for each component
 src/          implementations (board, minimax, network, mcts, replay
               buffer, self-play, minimax-eval helper)
 apps/         the three executables (train, evaluate, play_cli)
+tools/        diag_eval, a per-side game-transcript diagnostic
 tests/        assert-based test executables (one per component) plus
               tests/integration_smoke.sh, an end-to-end pipeline check
 ```
