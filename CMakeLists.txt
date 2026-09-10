@@ -11,6 +11,7 @@ endif()
 add_library(az
     src/board.cpp
     src/minimax.cpp
+    src/network.cpp
 )
 target_include_directories(az PUBLIC include)
 
@@ -23,3 +24,7 @@ add_test(NAME test_board COMMAND test_board)
 add_executable(test_minimax tests/test_minimax.cpp)
 target_link_libraries(test_minimax az)
 add_test(NAME test_minimax COMMAND test_minimax)
+
+add_executable(test_network tests/test_network.cpp)
+target_link_libraries(test_network az)
+add_test(NAME test_network COMMAND test_network)
