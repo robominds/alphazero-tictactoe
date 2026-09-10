@@ -1,10 +1,31 @@
 #include "az/mcts.hpp"
+#include <algorithm>
 #include <cmath>
 
 namespace az {
 
-MCTS::MCTS(const Network& network, int numSimulations, float cPuct)
-    : network_(network), numSimulations_(numSimulations), cPuct_(cPuct) {}
+MCTS::MCTS(const Network& network, int numSimulations, float cPuct,
+           bool addRootNoise, float dirichletAlpha, float dirichletEpsilon)
+    : network_(network), numSimulations_(numSimulations), cPuct_(cPuct),
+      addRootNoise_(addRootNoise), dirichletAlpha_(dirichletAlpha), dirichletEpsilon_(dirichletEpsilon) {}
+
+void MCTS::mixDirichletNoise(std::array<float, 9>& priors, const std::vector<int>& legalMoves,
+                              std::mt19937& rng, float alpha, float epsilon) {
+    std::gamma_distribution<float> gamma(alpha, 1.0f);
+    std::array<float, 9> noise{};
+    float sum = 0.0f;
+    for (int m : legalMoves) {
+        // A Gamma(alpha,1) draw is 0 with probability 0, but numerically it
+        // can land extremely close to it; floor it so every legal move is
+        // guaranteed strictly positive noise mass.
+        noise[m] = std::max(gamma(rng), 1e-6f);
+        sum += noise[m];
+    }
+    for (int m : legalMoves) {
+        float noiseFrac = noise[m] / sum;
+        priors[m] = (1.0f - epsilon) * priors[m] + epsilon * noiseFrac;
+    }
+}
 
 float MCTS::expand(Node& node) {
     Prediction pred = network_.predict(node.board.encode());
@@ -66,6 +87,10 @@ float MCTS::simulate(Node& node) {
 MCTSResult MCTS::run(const Board& board, float temperature) {
     Node root;
     root.board = board;
+    expand(root); // pre-expand so root noise (if any) applies before any simulation runs
+    if (addRootNoise_) {
+        mixDirichletNoise(root.priors, board.legalMoves(), rng_, dirichletAlpha_, dirichletEpsilon_);
+    }
     for (int i = 0; i < numSimulations_; ++i) {
         simulate(root);
     }

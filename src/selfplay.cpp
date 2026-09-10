@@ -19,7 +19,8 @@ void playSelfPlayGame(const Network& network, const SelfPlayConfig& config, Repl
 
     int ply = 0;
     while (!board.isTerminal()) {
-        MCTS mcts(network, config.numSimulations, config.cPuct);
+        MCTS mcts(network, config.numSimulations, config.cPuct,
+                  /*addRootNoise=*/true, config.dirichletAlpha, config.dirichletEpsilon);
         float temperature = (ply < config.temperatureMoves) ? 1.0f : 0.0f;
         MCTSResult result = mcts.run(board, temperature);
         pending.push_back(PendingExample{board.encode(), result.visitDistribution, board.playerToMove()});
