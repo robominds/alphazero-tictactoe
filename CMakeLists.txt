@@ -51,3 +51,6 @@ add_test(NAME test_eval COMMAND test_eval)
 
 add_executable(evaluate apps/evaluate.cpp)
 target_link_libraries(evaluate az)
+
+add_executable(train apps/train.cpp)
+target_link_libraries(train az)
