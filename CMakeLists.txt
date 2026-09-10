@@ -12,6 +12,7 @@ add_library(az
     src/board.cpp
     src/minimax.cpp
     src/network.cpp
+    src/mcts.cpp
 )
 target_include_directories(az PUBLIC include)
 
@@ -28,3 +29,7 @@ add_test(NAME test_minimax COMMAND test_minimax)
 add_executable(test_network tests/test_network.cpp)
 target_link_libraries(test_network az)
 add_test(NAME test_network COMMAND test_network)
+
+add_executable(test_mcts tests/test_mcts.cpp)
+target_link_libraries(test_mcts az)
+add_test(NAME test_mcts COMMAND test_mcts)
