@@ -44,6 +44,10 @@ int main(int argc, char** argv) {
                     std::printf("Invalid move, try again.\n");
                     std::cin.clear();
                     std::cin.ignore(10000, '\n');
+                    if (std::cin.eof()) {
+                        std::printf("\nInput ended, exiting.\n");
+                        return 0;
+                    }
                     continue;
                 }
                 break;
