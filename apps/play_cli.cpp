@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
 #include "az/board.hpp"
@@ -28,7 +29,12 @@ int main(int argc, char** argv) {
     }
 
     az::Network network;
-    network.load(argv[1]);
+    try {
+        network.load(argv[1]);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "error: %s\n", e.what());
+        return 1;
+    }
 
     std::printf("You are X. Enter a move as a number 0-8 (see grid below).\n");
     std::printf("0 1 2\n3 4 5\n6 7 8\n\n");
