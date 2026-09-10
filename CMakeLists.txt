@@ -54,3 +54,6 @@ target_link_libraries(evaluate az)
 
 add_executable(train apps/train.cpp)
 target_link_libraries(train az)
+
+add_executable(play_cli apps/play_cli.cpp)
+target_link_libraries(play_cli az)
