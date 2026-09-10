@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <stdexcept>
 #include "az/board.hpp"
 
 using namespace az;
@@ -63,6 +64,20 @@ void test_encode_is_from_perspective_of_player_to_move() {
     assert(enc[9 + 0] == 1.0f);
 }
 
+void test_cellAt_rejects_out_of_range_index() {
+    Board b;
+    for (int index : {-1, 9, 100}) {
+        bool threw = false;
+        try {
+            b.cellAt(index);
+        } catch (const std::out_of_range&) {
+            threw = true;
+        }
+        assert(threw);
+    }
+    for (int index = 0; index < 9; ++index) assert(b.cellAt(index) == Cell::Empty);
+}
+
 int main() {
     test_new_board_has_nine_legal_moves();
     test_apply_move_alternates_player();
@@ -71,6 +86,7 @@ int main() {
     test_draw_detected();
     test_illegal_move_rejected_by_isLegalMove();
     test_encode_is_from_perspective_of_player_to_move();
+    test_cellAt_rejects_out_of_range_index();
     std::printf("all board tests passed\n");
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "az/mcts.hpp"
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace az {
 
@@ -51,6 +52,10 @@ int MCTS::selectChild(const Node& node) const {
     for (int m : node.board.legalMoves()) totalVisits += node.visitCounts[m];
 
     float bestScore = -1e9f;
+    // Safe: simulate() returns early on a terminal node, so any node
+    // reaching here has at least one legal move. The seed also keeps a
+    // valid move if every score comes back NaN, which a corrupt
+    // checkpoint's weights can cause.
     int bestMove = node.board.legalMoves().front();
     for (int m : node.board.legalMoves()) {
         float q = node.visitCounts[m] > 0 ? node.totalValue[m] / node.visitCounts[m] : 0.0f;
@@ -85,11 +90,20 @@ float MCTS::simulate(Node& node) {
 }
 
 MCTSResult MCTS::run(const Board& board, float temperature) {
+    // Computed once and reused below: a terminal board yields an empty list,
+    // and both move-selection branches seed themselves from front()/back().
+    // Throw rather than assert, since this file compiles with NDEBUG in
+    // Release, where an assert would leave the empty-vector read in place.
+    std::vector<int> legalMoves = board.legalMoves();
+    if (legalMoves.empty()) {
+        throw std::invalid_argument("MCTS::run: board is terminal, no move to search");
+    }
+
     Node root;
     root.board = board;
     expand(root); // pre-expand so root noise (if any) applies before any simulation runs
     if (addRootNoise_) {
-        mixDirichletNoise(root.priors, board.legalMoves(), rng_, dirichletAlpha_, dirichletEpsilon_);
+        mixDirichletNoise(root.priors, legalMoves, rng_, dirichletAlpha_, dirichletEpsilon_);
     }
     for (int i = 0; i < numSimulations_; ++i) {
         simulate(root);
@@ -97,21 +111,21 @@ MCTSResult MCTS::run(const Board& board, float temperature) {
 
     std::array<float, 9> dist{};
     int totalVisits = 0;
-    for (int m : board.legalMoves()) totalVisits += root.visitCounts[m];
+    for (int m : legalMoves) totalVisits += root.visitCounts[m];
     if (totalVisits > 0) {
-        for (int m : board.legalMoves()) {
+        for (int m : legalMoves) {
             dist[m] = static_cast<float>(root.visitCounts[m]) / static_cast<float>(totalVisits);
         }
     } else {
-        float uniform = 1.0f / static_cast<float>(board.legalMoves().size());
-        for (int m : board.legalMoves()) dist[m] = uniform;
+        float uniform = 1.0f / static_cast<float>(legalMoves.size());
+        for (int m : legalMoves) dist[m] = uniform;
     }
 
     int selected;
     if (temperature <= 0.0f) {
-        selected = board.legalMoves().front();
+        selected = legalMoves.front();
         int bestVisits = -1;
-        for (int m : board.legalMoves()) {
+        for (int m : legalMoves) {
             if (root.visitCounts[m] > bestVisits) {
                 bestVisits = root.visitCounts[m];
                 selected = m;
@@ -120,15 +134,15 @@ MCTSResult MCTS::run(const Board& board, float temperature) {
     } else {
         std::array<float, 9> weights{};
         float sum = 0.0f;
-        for (int m : board.legalMoves()) {
+        for (int m : legalMoves) {
             weights[m] = std::pow(static_cast<float>(root.visitCounts[m]), 1.0f / temperature);
             sum += weights[m];
         }
         std::uniform_real_distribution<float> unif(0.0f, sum);
         float r = unif(rng_);
         float cumulative = 0.0f;
-        selected = board.legalMoves().back();
-        for (int m : board.legalMoves()) {
+        selected = legalMoves.back();
+        for (int m : legalMoves) {
             cumulative += weights[m];
             if (r <= cumulative) {
                 selected = m;

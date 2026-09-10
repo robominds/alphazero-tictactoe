@@ -1,13 +1,22 @@
 #include <cstdio>
-#include <cstdlib>
 #include <string>
+#include "arg_parse.hpp"
 #include "az/eval.hpp"
 #include "az/network.hpp"
 #include "az/replay_buffer.hpp"
 #include "az/selfplay.hpp"
 
 int main(int argc, char** argv) {
-    int numIterations = argc >= 2 ? std::atoi(argv[1]) : 200;
+    int numIterations = 200;
+    if (argc >= 2) {
+        std::optional<int> parsed = az::parsePositiveIntArg(argv[1]);
+        if (!parsed) {
+            std::fprintf(stderr, "usage: train [iterations] [checkpoint-path]\n");
+            std::fprintf(stderr, "error: iterations must be a positive integer, got \"%s\"\n", argv[1]);
+            return 1;
+        }
+        numIterations = *parsed;
+    }
     std::string checkpointPath = argc >= 3 ? argv[2] : "checkpoint.bin";
 
     const int gamesPerIteration = 25;

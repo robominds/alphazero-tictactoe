@@ -13,6 +13,7 @@ class Board {
 public:
     Board();
 
+    // Throws std::out_of_range unless 0 <= index < 9.
     Cell cellAt(int index) const;
     Cell playerToMove() const;
 

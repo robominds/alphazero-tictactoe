@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <vector>
 #include "az/board.hpp"
 #include "az/mcts.hpp"
@@ -68,10 +69,30 @@ void test_dirichlet_noise_gives_every_legal_move_positive_probability() {
     assert(std::fabs(sum - 1.0f) < 1e-3f);
 }
 
+void test_mcts_rejects_terminal_board() {
+    Board b;
+    int moves[] = {0, 3, 1, 4, 2}; // X completes the top row
+    for (int m : moves) b = b.applyMove(m);
+    assert(b.isTerminal());
+
+    Network net;
+    MCTS mcts(net, /*numSimulations=*/10, /*cPuct=*/1.5f);
+    for (float temperature : {0.0f, 1.0f}) {
+        bool threw = false;
+        try {
+            mcts.run(b, temperature);
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        assert(threw);
+    }
+}
+
 int main() {
     test_mcts_finds_immediate_winning_move();
     test_mcts_root_noise_still_explores_the_winning_move();
     test_dirichlet_noise_gives_every_legal_move_positive_probability();
+    test_mcts_rejects_terminal_board();
     std::printf("all mcts tests passed\n");
     return 0;
 }

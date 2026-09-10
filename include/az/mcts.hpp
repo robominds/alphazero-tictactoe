@@ -27,6 +27,8 @@ public:
 
     // temperature > 0: sample proportional to visitCount^(1/temperature).
     // temperature == 0: pick the max-visit move (ties -> lowest index).
+    // Precondition: !board.isTerminal(); throws std::invalid_argument if
+    // the board is terminal, since there is then no move to return.
     MCTSResult run(const Board& board, float temperature);
 
     // Exposed for testing: mixes Dirichlet(alpha) noise into priors over

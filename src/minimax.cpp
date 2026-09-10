@@ -1,6 +1,7 @@
 #include "az/minimax.hpp"
-#include <cassert>
 #include <limits>
+#include <stdexcept>
+#include <vector>
 
 namespace az {
 
@@ -23,10 +24,16 @@ int scoreOf(const Board& board) {
 } // namespace
 
 int minimaxBestMove(const Board& board) {
-    assert(!board.isTerminal());
-    int bestMove = board.legalMoves().front();
+    // A terminal board has no legal moves, so front() below would read
+    // from an empty vector. Throw rather than assert: this file compiles
+    // with NDEBUG in Release, where an assert is a no-op.
+    std::vector<int> moves = board.legalMoves();
+    if (moves.empty()) {
+        throw std::invalid_argument("minimaxBestMove: board is terminal, no move to pick");
+    }
+    int bestMove = moves.front();
     int bestScore = std::numeric_limits<int>::min();
-    for (int m : board.legalMoves()) {
+    for (int m : moves) {
         int score = -scoreOf(board.applyMove(m));
         if (score > bestScore) {
             bestScore = score;

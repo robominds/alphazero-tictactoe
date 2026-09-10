@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdio>
+#include <stdexcept>
 #include "az/board.hpp"
 #include "az/minimax.hpp"
 
@@ -30,10 +31,26 @@ void test_minimax_never_loses_against_itself() {
     assert(b.outcome() == Outcome::Draw);
 }
 
+void test_minimax_rejects_terminal_board() {
+    Board b;
+    int moves[] = {0, 3, 1, 4, 2}; // X completes the top row
+    for (int m : moves) b = b.applyMove(m);
+    assert(b.isTerminal());
+
+    bool threw = false;
+    try {
+        minimaxBestMove(b);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    assert(threw);
+}
+
 int main() {
     test_minimax_takes_immediate_win();
     test_minimax_blocks_immediate_loss();
     test_minimax_never_loses_against_itself();
+    test_minimax_rejects_terminal_board();
     std::printf("all minimax tests passed\n");
     return 0;
 }

@@ -1,5 +1,6 @@
 #include "az/board.hpp"
 #include <cassert>
+#include <cstddef>
 
 namespace az {
 
@@ -16,7 +17,12 @@ Board::Board() : toMove_(Cell::X) {
 }
 
 Cell Board::cellAt(int index) const {
-    return cells_[index];
+    // at() rather than [] so a bad index throws instead of reading past
+    // the array. An assert would not do: the library and app targets build
+    // Release with NDEBUG, which is exactly where an out-of-bounds read
+    // would go unnoticed. A negative index wraps to a huge size_t, which
+    // at() rejects just the same.
+    return cells_.at(static_cast<std::size_t>(index));
 }
 
 Cell Board::playerToMove() const {
