@@ -66,3 +66,9 @@ target_link_libraries(train az)
 
 add_executable(play_cli apps/play_cli.cpp)
 target_link_libraries(play_cli az)
+
+# Diagnostic: plays one game as X and one as O against minimax, printing
+# every move and MCTS visit distribution. Useful for tracing exactly where
+# a checkpoint loses, e.g. `./diag_eval checkpoint.bin`.
+add_executable(diag_eval tools/diag_eval.cpp)
+target_link_libraries(diag_eval az)
