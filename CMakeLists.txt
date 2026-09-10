@@ -13,6 +13,7 @@ add_library(az
     src/minimax.cpp
     src/network.cpp
     src/mcts.cpp
+    src/replay_buffer.cpp
 )
 target_include_directories(az PUBLIC include)
 
@@ -33,3 +34,7 @@ add_test(NAME test_network COMMAND test_network)
 add_executable(test_mcts tests/test_mcts.cpp)
 target_link_libraries(test_mcts az)
 add_test(NAME test_mcts COMMAND test_mcts)
+
+add_executable(test_replay_buffer tests/test_replay_buffer.cpp)
+target_link_libraries(test_replay_buffer az)
+add_test(NAME test_replay_buffer COMMAND test_replay_buffer)
