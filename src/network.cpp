@@ -1,6 +1,7 @@
 #include "az/network.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <random>
 #include <stdexcept>
@@ -137,9 +138,25 @@ float Network::trainStep(const std::vector<TrainingExample>& batch, float learni
     return totalLoss / n;
 }
 
+namespace {
+constexpr char kCheckpointMagic[4] = {'A', 'Z', 'N', 'N'};
+constexpr std::uint32_t kCheckpointVersion = 1;
+} // namespace
+
 void Network::save(const std::string& path) const {
     std::ofstream out(path, std::ios::binary);
     if (!out) throw std::runtime_error("Network::save: cannot open " + path);
+
+    out.write(kCheckpointMagic, sizeof(kCheckpointMagic));
+    std::uint32_t version = kCheckpointVersion;
+    out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+    std::uint32_t inputSize = static_cast<std::uint32_t>(kInputSize);
+    std::uint32_t hiddenSize = static_cast<std::uint32_t>(kHiddenSize);
+    std::uint32_t policySize = static_cast<std::uint32_t>(kPolicySize);
+    out.write(reinterpret_cast<const char*>(&inputSize), sizeof(inputSize));
+    out.write(reinterpret_cast<const char*>(&hiddenSize), sizeof(hiddenSize));
+    out.write(reinterpret_cast<const char*>(&policySize), sizeof(policySize));
+
     for (const auto& row : w1_) out.write(reinterpret_cast<const char*>(row.data()), row.size() * sizeof(float));
     out.write(reinterpret_cast<const char*>(b1_.data()), b1_.size() * sizeof(float));
     for (const auto& row : wPolicy_) out.write(reinterpret_cast<const char*>(row.data()), row.size() * sizeof(float));
@@ -151,6 +168,25 @@ void Network::save(const std::string& path) const {
 void Network::load(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("Network::load: cannot open " + path);
+
+    char magic[4] = {};
+    std::uint32_t version = 0;
+    std::uint32_t inputSize = 0, hiddenSize = 0, policySize = 0;
+    in.read(magic, sizeof(magic));
+    in.read(reinterpret_cast<char*>(&version), sizeof(version));
+    in.read(reinterpret_cast<char*>(&inputSize), sizeof(inputSize));
+    in.read(reinterpret_cast<char*>(&hiddenSize), sizeof(hiddenSize));
+    in.read(reinterpret_cast<char*>(&policySize), sizeof(policySize));
+
+    bool headerOk = in && std::equal(std::begin(magic), std::end(magic), std::begin(kCheckpointMagic)) &&
+                    version == kCheckpointVersion && inputSize == static_cast<std::uint32_t>(kInputSize) &&
+                    hiddenSize == static_cast<std::uint32_t>(kHiddenSize) &&
+                    policySize == static_cast<std::uint32_t>(kPolicySize);
+    if (!headerOk) {
+        throw std::runtime_error(
+            "Network::load: not a valid checkpoint file (bad magic/version/shape): " + path);
+    }
+
     for (auto& row : w1_) in.read(reinterpret_cast<char*>(row.data()), row.size() * sizeof(float));
     in.read(reinterpret_cast<char*>(b1_.data()), b1_.size() * sizeof(float));
     for (auto& row : wPolicy_) in.read(reinterpret_cast<char*>(row.data()), row.size() * sizeof(float));

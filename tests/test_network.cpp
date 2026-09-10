@@ -1,6 +1,9 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <vector>
 #include "az/network.hpp"
 
@@ -40,9 +43,55 @@ void test_train_step_reduces_loss_on_fixed_batch() {
     assert(lastLoss < 0.1f);
 }
 
+void test_save_load_round_trip_is_bit_exact() {
+    Network net;
+    std::array<float, 18> input{};
+    input[0] = 1.0f;
+    input[5] = -1.0f;
+    Prediction before = net.predict(input);
+
+    std::filesystem::path path = std::filesystem::temp_directory_path() / "az_test_network_roundtrip.bin";
+    net.save(path.string());
+
+    Network loaded;
+    loaded.load(path.string());
+    Prediction after = loaded.predict(input);
+
+    for (int k = 0; k < 9; ++k) {
+        assert(before.policy[k] == after.policy[k]);
+    }
+    assert(before.value == after.value);
+
+    std::filesystem::remove(path);
+}
+
+void test_load_rejects_corrupt_or_wrong_format_file() {
+    std::filesystem::path path = std::filesystem::temp_directory_path() / "az_test_network_garbage.bin";
+    {
+        std::ofstream out(path, std::ios::binary);
+        // Wrong magic, but plausible length so a naive size check wouldn't
+        // catch it -- pad with junk bytes.
+        const char garbage[] = "NOTANETWORKCHECKPOINTFILE-------------------------------";
+        out.write(garbage, sizeof(garbage));
+    }
+
+    Network net;
+    bool threw = false;
+    try {
+        net.load(path.string());
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    assert(threw);
+
+    std::filesystem::remove(path);
+}
+
 int main() {
     test_predict_output_shapes_and_ranges();
     test_train_step_reduces_loss_on_fixed_batch();
+    test_save_load_round_trip_is_bit_exact();
+    test_load_rejects_corrupt_or_wrong_format_file();
     std::printf("all network tests passed\n");
     return 0;
 }
