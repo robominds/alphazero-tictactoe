@@ -72,6 +72,20 @@ game as X and one as O against minimax, printing every move and MCTS
 visit distribution — useful for tracing exactly where and why a
 checkpoint loses.
 
+### Keeping the explainer's citations honest
+
+`docs/algorithm-explained.md` captions each code excerpt with the file and
+line it came from, and those line numbers rot silently: any commit that
+inserts a line above a quoted function invalidates a citation without
+making the document look wrong. `tools/check_citations.py` verifies every
+caption against the current source, and `--fix` rewrites the stale ones.
+It needs only the standard library and is not part of the build.
+
+```sh
+python3 tools/check_citations.py        # report
+python3 tools/check_citations.py --fix  # rewrite in place
+```
+
 ## Project layout
 
 ```
@@ -79,7 +93,9 @@ include/az/   public headers for each component
 src/          implementations (board, minimax, network, mcts, replay
               buffer, self-play, minimax-eval helper)
 apps/         the three executables (train, evaluate, play_cli)
-tools/        diag_eval, a per-side game-transcript diagnostic
+tools/        diag_eval, a per-side game-transcript diagnostic;
+              check_citations.py, which verifies the explainer's
+              file:line citations still point where they claim
 tests/        assert-based test executables (one per component) plus
               tests/integration_smoke.sh, an end-to-end pipeline check
 ```

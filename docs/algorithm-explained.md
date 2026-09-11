@@ -55,7 +55,7 @@ std::array<float, 18> Board::encode() const {
     return out;
 }
 ```
-*src/board.cpp:62 — `Board::encode`*
+*src/board.cpp:68 — `Board::encode`*
 
 Notice what's *not* in that encoding: the literal symbols X and O. The
 network only ever sees "my stones" and "the opponent's stones," never
@@ -195,7 +195,7 @@ float q = node.visitCounts[m] > 0 ? node.totalValue[m] / node.visitCounts[m] : 0
 float u = cPuct_ * node.priors[m] * std::sqrt(totalVisits + 1e-8f) / (1 + node.visitCounts[m]);
 float score = q + u;
 ```
-*src/mcts.cpp:33 — `MCTS::selectChild`*
+*src/mcts.cpp:50 — `MCTS::selectChild`*
 
 Read left to right: `Q(s,a)` is **exploitation** — the mean value this
 move has actually backed up so far, i.e. "how well has this move
@@ -261,7 +261,7 @@ float MCTS::simulate(Node& node) {
     return value;
 }
 ```
-*src/mcts.cpp:50 — `MCTS::simulate`*
+*src/mcts.cpp:73 — `MCTS::simulate`*
 
 This is the same convention used independently in three places in this
 codebase — search, the exhaustive minimax opponent used for evaluation,
@@ -361,7 +361,7 @@ void MCTS::mixDirichletNoise(std::array<float, 9>& priors, const std::vector<int
     }
 }
 ```
-*src/mcts.cpp:11 — `MCTS::mixDirichletNoise`*
+*src/mcts.cpp:13 — `MCTS::mixDirichletNoise`*
 
 A Dirichlet-distributed sample over the legal moves (drawn here via
 independent Gamma(`alpha`, 1) draws, normalized) gets blended 25% into
@@ -401,7 +401,7 @@ while (!board.isTerminal()) {
     ++ply;
 }
 ```
-*src/selfplay.cpp:17 — `playSelfPlayGame`*
+*src/selfplay.cpp:16 — `playSelfPlayGame`*
 
 `addRootNoise=true` is what wires in the Dirichlet-noise fix from section
 03 — self-play is exactly where the training data that eventually fixes a
@@ -461,7 +461,7 @@ for (const auto& p : pending) {
     buffer.add(TrainingExample{p.encoded, p.policy, z});
 }
 ```
-*src/selfplay.cpp:28 — `playSelfPlayGame`*
+*src/selfplay.cpp:16 — `playSelfPlayGame`*
 
 Every position recorded earlier in the game is revisited after it's over
 and stamped with `z` — the real, final result, seen from *that position's
@@ -519,7 +519,7 @@ for (int h = 0; h < 64; ++h) {
     dA1[h] = grad;
 }
 ```
-*src/network.cpp:99 — `Network::trainStep` (weight-gradient accumulation elided)*
+*src/network.cpp:54 — `Network::trainStep` (weight-gradient accumulation elided)*
 
 That accumulation step is where the "two heads, one trunk" architecture
 from section 01 earns its keep: the hidden layer's gradient is the *sum*

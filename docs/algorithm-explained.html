@@ -412,7 +412,7 @@ std::array&lt;float, 18&gt; Board::encode() const {
     }
     return out;
 }</code></pre>
-      <span class="src">src/board.cpp:62 — <code>Board::encode</code></span>
+      <span class="src">src/board.cpp:68 — <code>Board::encode</code></span>
 
       <p>Notice what's <em>not</em> in that encoding: the literal symbols X and O. The network only ever sees "my stones" and "the opponent's stones," never which physical mark they correspond to. This is a small instance of a general RL technique — <strong>state canonicalization</strong> — collapsing states that are strategically identical into one representation. Here it halves what the network has to learn: a position is exactly as good for "me" whether I'm playing X or O, so there's no reason to make the network discover that symmetry from data when the encoding can hand it over for free.</p>
 
@@ -559,7 +559,7 @@ std::array&lt;float, 18&gt; Board::encode() const {
       <pre><code>float q = node.visitCounts[m] &gt; 0 ? node.totalValue[m] / node.visitCounts[m] : 0.0f;
 float u = cPuct_ * node.priors[m] * std::sqrt(totalVisits + 1e-8f) / (1 + node.visitCounts[m]);
 float score = q + u;</code></pre>
-      <span class="src">src/mcts.cpp:33 — <code>MCTS::selectChild</code></span>
+      <span class="src">src/mcts.cpp:50 — <code>MCTS::selectChild</code></span>
 
       <p>Read left to right: <code>Q(s,a)</code> is <strong>exploitation</strong> — the mean value this move has actually backed up so far, i.e. "how well has this move performed in simulations we've already run." The second term is <strong>exploration</strong> — it starts large (when <code>N(s,a)</code>, the visit count, is 0) and shrinks every time the move gets visited again, while staying larger for moves the network's prior <code>P(a|s)</code> already likes. In plain terms: <em>try what the network suggests first, but don't ignore a move forever just because you haven't tried it yet.</em> <code>c<sub>puct</sub> = 1.5</code> in this codebase controls how strongly that exploration term counts against the accumulated evidence in <code>Q</code>.</p>
 
@@ -629,7 +629,7 @@ float score = q + u;</code></pre>
     node.totalValue[move]  += value;
     return value;
 }</code></pre>
-      <span class="src">src/mcts.cpp:50 — <code>MCTS::simulate</code></span>
+      <span class="src">src/mcts.cpp:73 — <code>MCTS::simulate</code></span>
 
       <p>This is the same convention used independently in three places in this codebase — search, the exhaustive minimax opponent used for evaluation, and the value labels assigned during self-play (section 05) — and it has to agree across all three or training silently learns the wrong thing. It's exactly the kind of one-line bug that would still compile, still run, and just quietly teach the network to prefer losing.</p>
 
@@ -696,7 +696,7 @@ float score = q + u;</code></pre>
         priors[m] = (1.0f - epsilon) * priors[m] + epsilon * noiseFrac;   // epsilon = 0.25
     }
 }</code></pre>
-      <span class="src">src/mcts.cpp:11 — <code>MCTS::mixDirichletNoise</code></span>
+      <span class="src">src/mcts.cpp:13 — <code>MCTS::mixDirichletNoise</code></span>
 
       <p>A Dirichlet-distributed sample over the legal moves (drawn here via independent Gamma(<code>alpha</code>, 1) draws, normalized) gets blended 25% into the network's own priors, <em>only at the root, only during self-play</em>. Blending only at the root keeps the noise's effect local to "which move does this training game explore next" without corrupting the deeper value estimates search relies on. Restricting it to self-play (not evaluation or interactive play) matters too: during a real game you want the network's honest best judgment, unperturbed — the noise's job is to make sure that judgment gets built on training data that actually explored the position, not to second-guess it at the moment of playing.</p>
 
@@ -718,7 +718,7 @@ float score = q + u;</code></pre>
     board = board.applyMove(result.selectedMove);
     ++ply;
 }</code></pre>
-      <span class="src">src/selfplay.cpp:17 — <code>playSelfPlayGame</code></span>
+      <span class="src">src/selfplay.cpp:16 — <code>playSelfPlayGame</code></span>
 
       <p><code>addRootNoise=true</code> is what wires in the Dirichlet-noise fix from section 03 — self-play is exactly where the training data that eventually fixes a bad prior gets generated, so it's exactly where forced exploration needs to happen.</p>
 
@@ -753,7 +753,7 @@ for (const auto&amp; p : pending) {
     }
     buffer.add(TrainingExample{p.encoded, p.policy, z});
 }</code></pre>
-      <span class="src">src/selfplay.cpp:28 — <code>playSelfPlayGame</code></span>
+      <span class="src">src/selfplay.cpp:16 — <code>playSelfPlayGame</code></span>
 
       <p>Every position recorded earlier in the game is revisited after it's over and stamped with <code>z</code> — the real, final result, seen from <em>that position's own player-to-move at the time</em> (not the last player to move in the finished game; see the sign-flip discussion in section 02, the same perspective convention applies here). This is a <strong>Monte Carlo return</strong>: an unbiased sample of a state's true value, computed by actually playing to the end rather than estimating. It's high-variance from any single game — a position that was objectively fine might get labeled <code>−1</code> just because of what happened many moves later — but averaged over the thousands of games a training run produces, it converges to the truth.</p>
 
@@ -788,7 +788,7 @@ for (int h = 0; h &lt; 64; ++h) {
     for (int k = 0; k &lt; 9; ++k) grad += dLogits[k] * wPolicy_[k][h];
     dA1[h] = grad;
 }</code></pre>
-      <span class="src">src/network.cpp:99 — <code>Network::trainStep</code> (weight-gradient accumulation elided)</span>
+      <span class="src">src/network.cpp:54 — <code>Network::trainStep</code> (weight-gradient accumulation elided)</span>
 
       <p>That accumulation step is where the "two heads, one trunk" architecture from section 01 earns its keep: the hidden layer's gradient is the <em>sum</em> of what both heads want it to change, so a single backward pass improves the shared representation for both jobs at once. Gradients are averaged over a batch of <code>batchSize = 32</code> examples and applied with plain stochastic gradient descent at <code>learningRate = 0.01</code> — no momentum, no Adam, nothing beyond the update rule <code>w −= learningRate · gradient</code>. It doesn't need more than that at this scale.</p>
     </section>
@@ -862,16 +862,16 @@ eval vs minimax: wins=0 draws=40 losses=0
         <dd><code>az::Board</code>, <code>az::Cell</code>, <code>az::Outcome</code> <span class="loc">— include/az/board.hpp</span></dd>
 
         <dt>State canonicalization</dt>
-        <dd>Player-relative <code>encode()</code> <span class="loc">— src/board.cpp:62</span></dd>
+        <dd>Player-relative <code>encode()</code> <span class="loc">— src/board.cpp:68</span></dd>
 
         <dt>Policy π(a|s) and value V(s) function approximation</dt>
         <dd><code>Network::predict</code>, the two-headed MLP <span class="loc">— src/network.cpp:23</span></dd>
 
         <dt>Planning / lookahead</dt>
-        <dd><code>MCTS::simulate</code>, <code>MCTS::run</code> <span class="loc">— src/mcts.cpp:50, 87</span></dd>
+        <dd><code>MCTS::simulate</code>, <code>MCTS::run</code> <span class="loc">— src/mcts.cpp:73, 92</span></dd>
 
         <dt>Exploration vs. exploitation (search-time)</dt>
-        <dd>The PUCT formula in <code>MCTS::selectChild</code> <span class="loc">— src/mcts.cpp:28</span></dd>
+        <dd>The PUCT formula in <code>MCTS::selectChild</code> <span class="loc">— src/mcts.cpp:50</span></dd>
 
         <dt>Guaranteed exploration / Dirichlet root noise</dt>
         <dd><code>MCTS::mixDirichletNoise</code>, enabled for self-play only <span class="loc">— src/mcts.cpp:11, src/selfplay.cpp:20</span></dd>
