@@ -712,7 +712,7 @@ float score = q + u;</code></pre>
 
       <p>A Dirichlet-distributed sample over the legal moves (drawn here via independent Gamma(<code>alpha</code>, 1) draws, normalized) gets blended 25% into the network's own priors, <em>only at the root, only during self-play</em>. Blending only at the root keeps the noise's effect local to "which move does this training game explore next" without corrupting the deeper value estimates search relies on. Restricting it to self-play (not evaluation or interactive play) matters too: during a real game you want the network's honest best judgment, unperturbed — the noise's job is to make sure that judgment gets built on training data that actually explored the position, not to second-guess it at the moment of playing.</p>
 
-      <p>The result, retrained from scratch: <code>draws=40 losses=0</code>, every game, both sides — after <strong>20</strong> iterations, not 1000. The fix didn't patch around one bad checkpoint; it changed what the network was ever given the chance to learn in the first place.</p>
+      <p>Noise helps, but it isn't enough on its own. In a sweep of 112 training runs, turning it off left the network drawing perfect play no more often than an untrained network does. With it on, the network still had blind spots an opponent could steer into. (An earlier version of this page reported <code>draws=40 losses=0</code> after 20 iterations here. That came from an evaluation where every game on a side was the same game; see section 07.) Noise changes which moves search <em>considers</em>. The bigger lever turned out to be which moves self-play actually <em>plays</em>, in section 04.</p>
     </section>
 
     <section id="selfplay">
@@ -737,13 +737,15 @@ float score = q + u;</code></pre>
       <p>The <code>temperature</code> parameter controls a second exploration/exploitation trade-off, this time over which move actually gets <em>played</em> in the generated game (not which move search merely considers):</p>
 
       <ul>
-        <li><strong>temperature = 1.0</strong> (the first <code>temperatureMoves = 2</code> plies): sample a move with probability proportional to its raw visit count. A move visited twice as often is twice as likely to be picked — but every legal move with at least one visit has <em>some</em> chance. This is what makes self-play generate varied openings instead of replaying the identical game forever.</li>
-        <li><strong>temperature = 0</strong> (every ply after that): always play the single most-visited move, deterministically. Once the game is a few moves in, there's no more benefit to exploring — search has already done its job, so play its best answer.</li>
+        <li><strong>temperature = 1.0</strong> (the first <code>temperatureMoves</code> plies; the default is 9, which in tic-tac-toe is the whole game): sample a move with probability proportional to its raw visit count. A move visited twice as often is twice as likely to be picked — but every legal move with at least one visit has <em>some</em> chance. This is what makes self-play generate varied games instead of replaying the identical game forever.</li>
+        <li><strong>temperature = 0</strong> (any ply after that): always play the single most-visited move, deterministically. In a longer game you would switch to this after the opening, so later positions in the training data come from strong play rather than from an accumulation of sampled mistakes.</li>
       </ul>
+
+      <p>How many plies to sample turned out to matter more than anything else tuned in this project. The default used to be 2, and training plateaued: the network can only learn positions self-play reaches, and with the game greedy after two moves, the same games kept repeating. In the second half of training, self-play reached only about 700 of the 4,520 positions a game can pass through. Searching every reply an opponent could make turned up positions where the trained network blunders, and most of them had never appeared in self-play at all. Sampling the whole game reaches about 2,000. Over eight runs of each, the network's own top move (before any search) went from a best move in about 85% of positions to 94%, and the number of runs that no opponent could beat, even without search, went from 0 to 7. The cost is noisier value labels: a sampled mistake late in a game changes its result, so labels matched the true outcome about 85% of the time instead of 97%. The coverage is worth far more.</p>
 
       <div class="callout">
         <span class="cal-label">the RL fundamental hiding in one config struct</span>
-        <p><code>SelfPlayConfig::temperatureMoves</code> is a two-line answer to a question every RL algorithm has to answer somehow: <em>how do you keep generating diverse experience without wrecking the quality of the data you learn from?</em> Too little exploration and the agent only ever practices one line of play, never discovering better ones. Too much and most of its games are close to random, diluting the training signal with noise. Annealing temperature from "explore" to "exploit" partway through each trajectory is a small, concrete instance of that trade-off, tuned for a game that's usually over in five to nine moves.</p>
+        <p><code>SelfPlayConfig::temperatureMoves</code> is a two-line answer to a question every RL algorithm has to answer somehow: <em>how do you keep generating diverse experience without wrecking the quality of the data you learn from?</em> Too little exploration and the agent only ever practices one line of play, never discovering better ones. Too much and most of its games are close to random, diluting the training signal with noise. Annealing temperature from "explore" to "exploit" partway through each trajectory is the usual compromise. In a game that's over in five to nine moves it tips all the way to exploring: there are few enough positions that covering them is worth noisier labels.</p>
       </div>
     </section>
 
@@ -802,7 +804,7 @@ for (int h = 0; h &lt; 64; ++h) {
 }</code></pre>
       <span class="src">src/network.cpp:54 — <code>Network::trainStep</code> (weight-gradient accumulation elided)</span>
 
-      <p>That accumulation step is where the "two heads, one trunk" architecture from section 01 earns its keep: the hidden layer's gradient is the <em>sum</em> of what both heads want it to change, so a single backward pass improves the shared representation for both jobs at once. Gradients are averaged over a batch of <code>batchSize = 32</code> examples and applied with plain stochastic gradient descent at <code>learningRate = 0.01</code> — no momentum, no Adam, nothing beyond the update rule <code>w −= learningRate · gradient</code>. It doesn't need more than that at this scale.</p>
+      <p>That accumulation step is where the "two heads, one trunk" architecture from section 01 earns its keep: the hidden layer's gradient is the <em>sum</em> of what both heads want it to change, so a single backward pass improves the shared representation for both jobs at once. Gradients are averaged over a batch of <code>batchSize = 32</code> examples and applied with plain stochastic gradient descent at <code>learningRate = 0.05</code>, 200 batches per iteration — no momentum, no Adam, nothing beyond the update rule <code>w −= learningRate · gradient</code>. It doesn't need more than that at this scale, but it does need enough of it: an earlier 0.01 with 20 batches per iteration left the network barely better than untrained.</p>
     </section>
 
     <section id="loop">
@@ -827,7 +829,7 @@ for (int h = 0; h &lt; 64; ++h) {
 
             <rect x="490" y="70" width="170" height="70" rx="6" fill="none" class="x-stroke" stroke-width="1.4"/>
             <text x="575" y="98" text-anchor="middle" font-size="12.5" font-family="IBM Plex Mono, monospace">train</text>
-            <text x="575" y="115" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">20 batches of 32</text>
+            <text x="575" y="115" text-anchor="middle" font-size="10.5" class="dim" font-family="IBM Plex Mono, monospace">200 batches of 32</text>
 
             <line x1="190" y1="105" x2="253" y2="105" class="rule" stroke-width="1.4" marker-end="url(#arrL)"/>
             <line x1="425" y1="105" x2="488" y2="105" class="rule" stroke-width="1.4" marker-end="url(#arrL)"/>
@@ -847,18 +849,18 @@ for (int h = 0; h &lt; 64; ++h) {
 
       <p>Why check against an exhaustive minimax solver instead of, say, the network's own previous checkpoint (the "arena" step real AlphaZero uses)? Because tic-tac-toe is small enough to solve outright — there's a computable, unambiguous notion of "playing perfectly" to measure against, which most real games don't have. It also gives an evaluation invariant that's satisfying to say out loud: a perfect player never loses, so <strong>the network's win count against it is always exactly zero</strong>, by construction, and the only number that can move is how often it manages to draw instead of losing.</p>
 
-      <p>Run for real, this converges:</p>
+      <p>Run for real — eight <code>./train</code> runs at the defaults (600 iterations each), each checkpoint then scored with <code>./evaluate</code> over 100 games per side:</p>
 
-      <pre><code>iteration 40: buffer=8452 loss=1.8831
-eval vs minimax: wins=0 draws=38 losses=2
-iteration 50: buffer=9847 loss=1.6104
-eval vs minimax: wins=0 draws=40 losses=0
-iteration 60: buffer=10000 loss=1.5721
-eval vs minimax: wins=0 draws=40 losses=0
-   ⋮                                        (draws=40 losses=0 holds through iteration 120)</code></pre>
-      <span class="src">from a real <code>./train 120</code> run, before the fix in section 03</span>
+      <pre><code>wins=0 draws=200 losses=0     (4 of the 8 runs)
+wins=0 draws=198 losses=2
+wins=0 draws=195 losses=5
+wins=0 draws=188 losses=12
+wins=0 draws=170 losses=30</code></pre>
+      <span class="src">from eight real <code>./train</code> runs</span>
 
-      <p>That run predates the Dirichlet-noise fix from section 03 — it converges, but it's also exactly the kind of run that can quietly hide a blind spot behind a still-improving loss curve. A retrain with root noise enabled reached the same <code>draws=40 losses=0</code> — every game, both sides — after <strong>20</strong> iterations, not 120, and didn't get stuck the way the original 1000-iteration run in section 03 did. Faster convergence wasn't really the goal of the fix; it's the side effect of the network actually being made to look at the positions it was previously allowed to ignore.</p>
+      <p>Every loss was as O. The four runs at 200 of 200 also pass a stricter test: searching every reply an opponent could make, none of them can be beaten from either side. The other four can, as O. Training gets there about half the time, not every time.</p>
+
+      <p>The minimax opponent breaks ties between equally good moves at random, and that matters. It used to take the lowest-numbered best move every time, and greedy search is deterministic too, so every game on a side was the same game. Earlier versions of this page reported <code>draws=40 losses=0</code> here, from what were really two games.</p>
 
       <p>Loss falling and losses (the game-outcome kind) hitting zero are two different claims, and it's worth noticing which one actually matters: a network can have low loss while still losing occasionally, if it's confidently predicting outcomes it's actually still misjudging tactically. The number that ultimately validates this whole pipeline is <code>losses=0</code> holding — not the loss curve.</p>
     </section>
@@ -911,7 +913,7 @@ eval vs minimax: wins=0 draws=40 losses=0
   </main>
 
   <footer>
-    Written against commit-level source in <code>alphazero-tictactoe</code> — build and run it yourself with <code>mkdir build &amp;&amp; cd build &amp;&amp; cmake .. &amp;&amp; cmake --build . &amp;&amp; ./train 300 checkpoint.bin</code>. Design and prose assembled with Claude Code.
+    Written against commit-level source in <code>alphazero-tictactoe</code> — build and run it yourself with <code>mkdir build &amp;&amp; cd build &amp;&amp; cmake .. &amp;&amp; cmake --build . &amp;&amp; ./train 600 checkpoint.bin</code>. Design and prose assembled with Claude Code.
   </footer>
 </div>
 </body>

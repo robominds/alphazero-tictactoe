@@ -375,10 +375,14 @@ the network's honest best judgment, unperturbed — the noise's job is to
 make sure that judgment gets built on training data that actually
 explored the position, not to second-guess it at the moment of playing.
 
-The result, retrained from scratch: `draws=40 losses=0`, every game, both
-sides — after **20** iterations, not 1000. The fix didn't patch around
-one bad checkpoint; it changed what the network was ever given the
-chance to learn in the first place.
+Noise helps, but it isn't enough on its own. In a sweep of 112 training
+runs, turning it off left the network drawing perfect play no more often
+than an untrained network does. With it on, the network still had blind
+spots an opponent could steer into. (An earlier version of this page
+reported `draws=40 losses=0` after 20 iterations here. That came from an
+evaluation where every game on a side was the same game; see section 07.)
+Noise changes which moves search *considers*. The bigger lever turned out
+to be which moves self-play actually *plays*, in section 04.
 
 ---
 
@@ -413,16 +417,31 @@ The `temperature` parameter controls a second exploration/exploitation
 trade-off, this time over which move actually gets *played* in the
 generated game (not which move search merely considers):
 
-- **temperature = 1.0** (the first `temperatureMoves = 2` plies): sample a
-  move with probability proportional to its raw visit count. A move
-  visited twice as often is twice as likely to be picked — but every
-  legal move with at least one visit has *some* chance. This is what
-  makes self-play generate varied openings instead of replaying the
-  identical game forever.
-- **temperature = 0** (every ply after that): always play the single
-  most-visited move, deterministically. Once the game is a few moves in,
-  there's no more benefit to exploring — search has already done its
-  job, so play its best answer.
+- **temperature = 1.0** (the first `temperatureMoves` plies; the default
+  is 9, which in tic-tac-toe is the whole game): sample a move with
+  probability proportional to its raw visit count. A move visited twice
+  as often is twice as likely to be picked — but every legal move with at
+  least one visit has *some* chance. This is what makes self-play
+  generate varied games instead of replaying the identical game forever.
+- **temperature = 0** (any ply after that): always play the single
+  most-visited move, deterministically. In a longer game you would switch
+  to this after the opening, so later positions in the training data come
+  from strong play rather than from an accumulation of sampled mistakes.
+
+How many plies to sample turned out to matter more than anything else
+tuned in this project. The default used to be 2, and training plateaued:
+the network can only learn positions self-play reaches, and with the game
+greedy after two moves, the same games kept repeating. In the second half
+of training, self-play reached only about 700 of the 4,520 positions a
+game can pass through. Searching every reply an opponent could make
+turned up positions where the trained network blunders, and most of them
+had never appeared in self-play at all. Sampling the whole game reaches
+about 2,000. Over eight runs of each, the network's own top move (before
+any search) went from a best move in about 85% of positions to 94%, and
+the number of runs that no opponent could beat, even without search, went
+from 0 to 7. The cost is noisier value labels: a sampled mistake late in a
+game changes its result, so labels matched the true outcome about 85% of
+the time instead of 97%. The coverage is worth far more.
 
 > **The RL fundamental hiding in one config struct.**
 > `SelfPlayConfig::temperatureMoves` is a two-line answer to a question
@@ -432,8 +451,9 @@ generated game (not which move search merely considers):
 > line of play, never discovering better ones. Too much and most of its
 > games are close to random, diluting the training signal with noise.
 > Annealing temperature from "explore" to "exploit" partway through each
-> trajectory is a small, concrete instance of that trade-off, tuned for a
-> game that's usually over in five to nine moves.
+> trajectory is the usual compromise. In a game that's over in five to
+> nine moves it tips all the way to exploring: there are few enough
+> positions that covering them is worth noisier labels.
 
 ---
 
@@ -527,9 +547,11 @@ from section 01 earns its keep: the hidden layer's gradient is the *sum*
 of what both heads want it to change, so a single backward pass improves
 the shared representation for both jobs at once. Gradients are averaged
 over a batch of `batchSize = 32` examples and applied with plain
-stochastic gradient descent at `learningRate = 0.01` — no momentum, no
-Adam, nothing beyond the update rule `w −= learningRate · gradient`. It
-doesn't need more than that at this scale.
+stochastic gradient descent at `learningRate = 0.05`, 200 batches per
+iteration — no momentum, no Adam, nothing beyond the update rule
+`w −= learningRate · gradient`. It doesn't need more than that at this
+scale, but it does need enough of it: an earlier 0.01 with 20 batches per
+iteration left the network barely better than untrained.
 
 ---
 
@@ -540,7 +562,7 @@ doesn't need more than that at this scale.
 ```
    ┌──────────────┐      ┌─────────────────┐      ┌──────────────┐
    │  self-play   │ ───▶ │  replay buffer  │ ───▶ │    train     │
-   │ 25 games/it. │      │ capacity 10,000 │      │ 20×batch 32  │
+   │ 25 games/it. │      │ capacity 10,000 │      │ 200×batch 32 │
    └──────────────┘      └─────────────────┘      └──────┬───────┘
           ▲                                               │
           └──────────── updated network plays next ───────┘
@@ -569,27 +591,28 @@ network's win count against it is always exactly zero**, by construction,
 and the only number that can move is how often it manages to draw instead
 of losing.
 
-Run for real, this converges:
+Run for real — eight `./train` runs at the defaults (600 iterations each),
+each checkpoint then scored with `./evaluate` over 100 games per side:
 
 ```
-iteration 40: buffer=8452 loss=1.8831
-eval vs minimax: wins=0 draws=38 losses=2
-iteration 50: buffer=9847 loss=1.6104
-eval vs minimax: wins=0 draws=40 losses=0
-iteration 60: buffer=10000 loss=1.5721
-eval vs minimax: wins=0 draws=40 losses=0
-   ⋮                                    (draws=40 losses=0 holds through iteration 120)
+wins=0 draws=200 losses=0     (4 of the 8 runs)
+wins=0 draws=198 losses=2
+wins=0 draws=195 losses=5
+wins=0 draws=188 losses=12
+wins=0 draws=170 losses=30
 ```
-*from a real `./train 120` run, before the fix in section 03*
+*from eight real `./train` runs*
 
-That run predates the Dirichlet-noise fix from section 03 — it converges,
-but it's also exactly the kind of run that can quietly hide a blind spot
-behind a still-improving loss curve. A retrain with root noise enabled
-reached the same `draws=40 losses=0` — every game, both sides — after
-**20** iterations, not 120, and didn't get stuck the way the original
-1000-iteration run in section 03 did. Faster convergence wasn't really
-the goal of the fix; it's the side effect of the network actually being
-made to look at the positions it was previously allowed to ignore.
+Every loss was as O. The four runs at 200 of 200 also pass a stricter
+test: searching every reply an opponent could make, none of them can be
+beaten from either side. The other four can, as O. Training gets there
+about half the time, not every time.
+
+The minimax opponent breaks ties between equally good moves at random,
+and that matters. It used to take the lowest-numbered best move every
+time, and greedy search is deterministic too, so every game on a side was
+the same game. Earlier versions of this page reported `draws=40 losses=0`
+here, from what were really two games.
 
 Loss falling and losses (the game-outcome kind) hitting zero are two
 different claims, and it's worth noticing which one actually matters: a
@@ -627,7 +650,7 @@ yourself with:
 
 ```sh
 mkdir build && cd build && cmake .. && cmake --build .
-./train 300 checkpoint.bin
+./train 600 checkpoint.bin
 ```
 
 Design and prose assembled with [Claude Code](https://claude.com/claude-code).

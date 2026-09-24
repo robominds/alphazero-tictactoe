@@ -35,7 +35,7 @@ Three executables are produced in `build/`:
 # Train from scratch. Periodically prints self-play/training progress and
 # evaluates against a perfect minimax player; saves checkpoints along the way.
 ./train [iterations] [checkpoint-path]
-# defaults: 200 iterations, checkpoint.bin
+# defaults: 600 iterations, checkpoint.bin
 
 # Score a saved checkpoint against perfect minimax play (as both X and O).
 # Minimax picks at random among equally good moves, so games vary.
@@ -49,7 +49,7 @@ Three executables are produced in `build/`:
 Typical session:
 
 ```sh
-./train 300 checkpoint.bin
+./train 600 checkpoint.bin
 ./evaluate checkpoint.bin
 ./play_cli checkpoint.bin
 ```
@@ -60,15 +60,22 @@ Against perfect play the best a network can do is draw every game, so the
 number to watch is the draw rate. Read it against a baseline: search alone
 is strong in a game this small, and an **untrained** network with
 100-simulation search already draws about 60–70% of games against
-minimax. Improvement shows up as a draw rate above that.
+minimax.
 
-With the default settings, training is not yet reliable. Four
-200-iteration runs finished at 57, 63, 68 and 92 draws out of 100
-(`./evaluate`, 50 games per side); most are no better than the untrained
-baseline. A run with 10× the training steps per iteration and a 5× learning
-rate (`trainStepsPerIteration` and `learningRate` in `apps/train.cpp`)
-reached 91. No checkpoint tested so far is unbeatable: an opponent
-that tries every reply can still beat each of them as O.
+At the defaults, eight 600-iteration runs finished at 200, 200, 200, 200,
+198, 195, 188 and 170 draws out of 200 (`./evaluate`, 100 games per side).
+Every loss was as O. The four perfect runs also can't be beaten by an
+opponent that tries every possible reply, from either side; the other
+four can, as O. So training reaches unbeatable play about half the time.
+Running 200 iterations instead gets there in 2 of 8 runs.
+
+Two settings made the difference. Self-play now samples moves for the
+whole game (`SelfPlayConfig::temperatureMoves = 9`, up from 2), because
+the network only learns positions self-play reaches and greedy play after
+move 2 kept replaying the same few games. Training also takes 200 steps at
+learning rate 0.05 per iteration (up from 20 at 0.01), without which the
+network barely learned at all. `docs/algorithm-explained.md` section 04
+has the measurements.
 
 Earlier versions of this README reported `draws=40 losses=0` after 20
 iterations. That figure came from an evaluation where minimax always broke

@@ -7,7 +7,7 @@
 #include "az/selfplay.hpp"
 
 int main(int argc, char** argv) {
-    int numIterations = 200;
+    int numIterations = 600;
     if (argc >= 2) {
         std::optional<int> parsed = az::parsePositiveIntArg(argv[1]);
         if (!parsed) {
@@ -21,8 +21,8 @@ int main(int argc, char** argv) {
 
     const int gamesPerIteration = 25;
     const int batchSize = 32;
-    const int trainStepsPerIteration = 20;
-    const float learningRate = 0.01f;
+    const int trainStepsPerIteration = 200;
+    const float learningRate = 0.05f;
     const int evalEveryIterations = 10;
     const int evalGamesPerSide = 20;
 

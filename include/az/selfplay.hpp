@@ -8,8 +8,13 @@ struct SelfPlayConfig {
     int numSimulations = 50;
     float cPuct = 1.5f;
     // Number of plies (from game start) using temperature=1.0 sampling;
-    // afterward, moves are selected greedily (temperature=0).
-    int temperatureMoves = 2;
+    // afterward, moves are selected greedily (temperature=0). The default
+    // samples the whole game: training only learns positions self-play
+    // reaches, and with 2 sampled plies the games repeated so much that
+    // self-play reached only about 700 of the 4520 positions, leaving
+    // blind spots an opponent could steer into. Sampling throughout
+    // roughly triples that.
+    int temperatureMoves = 9;
     // Dirichlet noise mixed into the root's priors during search, so search
     // keeps exploring every legal move even when the network is confident
     // (possibly wrongly) that some move is bad. Only used during self-play
