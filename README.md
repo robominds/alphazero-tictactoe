@@ -24,7 +24,7 @@ Requires CMake 3.16+ and a C++17 compiler. No external dependencies.
 mkdir build && cd build
 cmake ..
 cmake --build .
-ctest --output-on-failure   # run the test suite (7 tests)
+ctest --output-on-failure   # run the test suite (8 tests)
 ```
 
 ## Usage
@@ -38,6 +38,7 @@ Three executables are produced in `build/`:
 # defaults: 200 iterations, checkpoint.bin
 
 # Score a saved checkpoint against perfect minimax play (as both X and O).
+# Minimax picks at random among equally good moves, so games vary.
 ./evaluate <checkpoint-path> [games-per-side]
 # default: 50 games per side
 
@@ -55,9 +56,24 @@ Typical session:
 
 ### What "trained" looks like
 
-Training converges to optimal (drawing) play against minimax — with root
-Dirichlet noise during self-play (see below), a real run reached
-`draws=40 losses=0` (all 40 games, both sides) after just **20 iterations**.
+Against perfect play the best a network can do is draw every game, so the
+number to watch is the draw rate. Read it against a baseline: search alone
+is strong in a game this small, and an **untrained** network with
+100-simulation search already draws about 60–70% of games against
+minimax. Improvement shows up as a draw rate above that.
+
+With the default settings, training is not yet reliable. Four
+200-iteration runs finished at 57, 63, 68 and 92 draws out of 100
+(`./evaluate`, 50 games per side); most are no better than the untrained
+baseline. A run with 10× the training steps per iteration and a 5× learning
+rate (`trainStepsPerIteration` and `learningRate` in `apps/train.cpp`)
+reached 91. No checkpoint tested so far is unbeatable: an opponent
+that tries every reply can still beat each of them as O.
+
+Earlier versions of this README reported `draws=40 losses=0` after 20
+iterations. That figure came from an evaluation where minimax always broke
+ties the same way. Greedy search is deterministic too, so every game on a
+side was the same game, and the 40 games were really 2.
 
 ### Debugging a checkpoint
 
@@ -70,7 +86,8 @@ because search never visits the one move that mattered enough to correct
 it. `tools/diag_eval.cpp` (built as `./diag_eval <checkpoint>`) plays one
 game as X and one as O against minimax, printing every move and MCTS
 visit distribution — useful for tracing exactly where and why a
-checkpoint loses.
+checkpoint loses. Minimax's tie-breaking is random, so rerun it to see
+other lines.
 
 ### Keeping the explainer's citations honest
 
@@ -103,8 +120,8 @@ tests/        assert-based test executables (one per component) plus
 Deliberately out of scope (see the spec's Non-Goals): AlphaZero's
 arena/network-promotion step, and MuZero-style learned game dynamics —
 tic-tac-toe's state space is small enough that continuous training plus
-periodic minimax evaluation gives a clear, unambiguous convergence signal
-without either.
+periodic minimax evaluation gives a direct measure of progress without
+either.
 
 ## Authorship
 
