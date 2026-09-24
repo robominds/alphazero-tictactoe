@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <random>
 #include <string>
 #include "az/board.hpp"
 #include "az/network.hpp"
@@ -7,7 +8,7 @@
 
 namespace {
 
-void playAndPrint(const az::Network& net, bool networkPlaysX) {
+void playAndPrint(const az::Network& net, bool networkPlaysX, std::mt19937& rng) {
     az::Board board;
     std::printf("=== network plays %s ===\n", networkPlaysX ? "X" : "O");
     int ply = 0;
@@ -24,7 +25,7 @@ void playAndPrint(const az::Network& net, bool networkPlaysX) {
             }
             std::printf(")\n");
         } else {
-            move = az::minimaxBestMove(board);
+            move = az::minimaxBestMove(board, rng);
             std::printf("ply %d: minimax plays %d\n", ply, move);
         }
         board = board.applyMove(move);
@@ -57,7 +58,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "error: %s\n", e.what());
         return 1;
     }
-    playAndPrint(net, true);
-    playAndPrint(net, false);
+    // Minimax picks at random among equally good moves, so repeated runs
+    // can show different lines.
+    std::mt19937 rng{std::random_device{}()};
+    playAndPrint(net, true, rng);
+    playAndPrint(net, false, rng);
     return 0;
 }

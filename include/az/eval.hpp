@@ -10,7 +10,8 @@ struct EvalResult {
 };
 
 // Plays gamesPerSide games with the network as X and gamesPerSide as O
-// against perfect minimax, using greedy (temperature=0) MCTS with
+// against perfect minimax (which picks at random among equally good
+// moves, so games can differ), using greedy (temperature=0) MCTS with
 // numSimulations simulations per move. Results are from the network's
 // perspective.
 EvalResult evaluateAgainstMinimax(const Network& network, int gamesPerSide, int numSimulations);

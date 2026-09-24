@@ -654,7 +654,7 @@ float score = q + u;</code></pre>
 
       <p>The section above ends on an optimistic note — search corrects the network's guesses. It doesn't always, and the failure mode is worth walking through in detail, because it happened for real in this exact codebase and it's one of the cleaner illustrations of why the exploration/exploitation trade-off is not a solved problem, just a managed one.</p>
 
-      <p>A network trained for 1000 iterations (training loss down to ~0.22 — very confident) was evaluated against minimax and came back <code>wins=0 draws=20 losses=20</code>, every single time it was re-run. Losing <em>some</em> games isn't surprising early in training. Losing <strong>exactly</strong> the same 20 games, deterministically, forever, is a different kind of signal — evaluation has no randomness in it (minimax always resolves ties the same way, and greedy search at temperature 0 never touches the RNG), so this wasn't variance. It was one specific game, played the same losing way every time.</p>
+      <p>A network trained for 1000 iterations (training loss down to ~0.22 — very confident) was evaluated against minimax and came back <code>wins=0 draws=20 losses=20</code>, every single time it was re-run. Losing <em>some</em> games isn't surprising early in training. Losing <strong>exactly</strong> the same 20 games, deterministically, forever, is a different kind of signal — evaluation had no randomness in it at the time (minimax always resolved ties the same way, and greedy search at temperature 0 never touches the RNG; minimax now breaks ties at random), so this wasn't variance. It was one specific game, played the same losing way every time.</p>
 
       <figure class="wide">
         <div class="fig-frame">

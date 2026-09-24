@@ -298,9 +298,10 @@ confident) was evaluated against minimax and came back
 `wins=0 draws=20 losses=20`, every single time it was re-run. Losing
 *some* games isn't surprising early in training. Losing **exactly** the
 same 20 games, deterministically, forever, is a different kind of
-signal — evaluation has no randomness in it (minimax always resolves ties
-the same way, and greedy search at temperature 0 never touches the RNG),
-so this wasn't variance. It was one specific game, played the same losing
+signal — evaluation had no randomness in it at the time (minimax always
+resolved ties the same way, and greedy search at temperature 0 never
+touches the RNG; minimax now breaks ties at random), so this wasn't
+variance. It was one specific game, played the same losing
 way every time.
 
 **The critical position** — O to move, board `X . O / X . . / . . .`
